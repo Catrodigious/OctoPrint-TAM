@@ -4,6 +4,9 @@ function SettingsViewModel(loginStateViewModel, usersViewModel) {
     self.loginState = loginStateViewModel;
     self.users = usersViewModel;
 
+	// TYPEA: initialize our container for all the stuff necessary to handle network settings.
+	self.netSettings = new NetSettings(self);
+
     self.api_enabled = ko.observable(undefined);
     self.api_key = ko.observable(undefined);
 
@@ -97,6 +100,7 @@ function SettingsViewModel(loginStateViewModel, usersViewModel) {
     self.feature_sdSupport = ko.observable(undefined);
     self.feature_sdAlwaysAvailable = ko.observable(undefined);
     self.feature_swallowOkAfterResend = ko.observable(undefined);
+    self.feature_networkSettings = ko.observable(undefined);
     self.feature_repetierTargetTemp = ko.observable(undefined);
 
     self.serial_port = ko.observable();
@@ -209,6 +213,7 @@ function SettingsViewModel(loginStateViewModel, usersViewModel) {
         self.feature_alwaysSendChecksum(response.feature.alwaysSendChecksum);
         self.feature_sdSupport(response.feature.sdSupport);
         self.feature_sdAlwaysAvailable(response.feature.sdAlwaysAvailable);
+		self.feature_networkSettings(response.feature.networkSettings);
         self.feature_swallowOkAfterResend(response.feature.swallowOkAfterResend);
         self.feature_repetierTargetTemp(response.feature.repetierTargetTemp);
 
@@ -239,6 +244,44 @@ function SettingsViewModel(loginStateViewModel, usersViewModel) {
 
         self.terminalFilters(response.terminalFilters);
     };
+
+// TYPEA: FIXME: why do the net settings observables break if we move them to NetSettings()? I've tried qualifing
+	// their data binds with "netSettings." to no avail.
+	// TYPEA: these are bogus observables that are used initialize the Selectize widget's data bind. Selectize elements
+	// don't load properly if they don't have the data-bind set. But data-binding selectize elements doesn't actually
+	// work with ko2. So, we pass these two empty values to the selectize data-bind in the HTML, and then fill in real
+	// options later, in the NetSettings.updateUI() function.
+	self.selectizeValue = ko.observable(0);
+	self.selectizeValues = ko.observableArray([{id:0, name:"none"}]);
+
+    self.wifi_passkey = ko.observable("");
+
+	// TYPEA: flag to indicate if the settings were saved. Used by the network settings code below to indicate if the
+	// user saved the settings (instead of canceling the settings dialog). Set to true in self.saveData() and then set
+	// back to false after the settings dialog is hidden.
+	self.settingsSaved = false;
+	
+	// TYPEA: falg to make sure we don't reinstall the settings dialog event handlers.
+	self.settingsDialogEventHandlersInstalled = false;
+
+	if (!self.settingsDialogEventHandlersInstalled)
+	{
+		// TYPEA: install an event handler to to tell the network settings to save (see below) and also to reset the
+		// settingsSaved flag after the settings dialog is hidden.
+		$('#settings_dialog').on('show', function() {
+			self.settingsSaved = false;
+			console.log("SettingsViewModel.netSettings: ");
+			console.log(self.netSettings);
+			self.netSettings.settingsDialogWillShow();
+		});
+
+		// TYPEA: install an event handler to to tell the network settings to save (see below) and also to reset the
+		// settingsSaved flag after the settings dialog is hidden.
+		$('#settings_dialog').on('hidden', function() {
+			self.netSettings.settingsDialogDidHide(self.settingsSaved);
+			self.settingsSaved = false;
+		});
+	}
 
     self.saveData = function() {
         var data = {
@@ -276,6 +319,7 @@ function SettingsViewModel(loginStateViewModel, usersViewModel) {
                 "alwaysSendChecksum": self.feature_alwaysSendChecksum(),
                 "sdSupport": self.feature_sdSupport(),
                 "sdAlwaysAvailable": self.feature_sdAlwaysAvailable(),
+				"networkSettings": self.feature_networkSettings(),
                 "swallowOkAfterResend": self.feature_swallowOkAfterResend(),
                 "repetierTargetTemp": self.feature_repetierTargetTemp()
             },
@@ -322,5 +366,312 @@ function SettingsViewModel(loginStateViewModel, usersViewModel) {
             }
         });
     }
+}
 
+// TYPEA: NetSettings is a container all the stuff necessary to handle network settings, so that we keep from crowding
+// the view model with a zillion new nont-persistable variables.
+function NetSettings(settingsViewModel)
+{
+    var self = this;
+
+	console.log("NetSettings() called.");
+
+	// TYEPA: set up networking settings. The wifi configuration settings (and right now, these are the only network
+	// settings) circumvent ko and the get/set settings requests because they aren't actually stored as Octoprint
+	// settings. Instead, they'll be written out to the device network interfaces config file by the server. Thus, we
+	// populate the wifi settings UI using special requests and then post them to the server when the settings dialog is
+	// dismissed.
+	//
+	// This process is fairly elaborate. One of the problems with switching the network interface of the Beagle on the
+	// fly is that it's very, very slow and thus ties up the server when it happens. Thus, we need to put up a modal
+	// to inform the user that it's going to take a while (and prevent further user interactions, since the server is
+	// is going to busy with ifup/ifdown). To make that work, we go through the following steps:
+	//
+	//	1.	During the Settings dialog hidden handler, we POST the current wifi UI values to the server. The server
+	//		response indicates if these values will cause the Beagle to change its net config. If the server says the
+	//		settings haven't changed, we're done.
+	//	2.	If the server says our settings will change the Beagle's config, then we put a modal alert telling the user
+	//		what's happening and that it's going to be slow. This modal has no close UI and locks out all user
+	//		interaction with Octoprint.
+	//	3.	From the modal alert's shown handle, we POST a request to the server to actually change the wifi settings to
+	//		the new values the user has entered. The server's response indicates whether that operation succeeded and
+	//		why it failed, if it did.
+	//	4.	The POST handler from step 3 hides the modal alert and informs the user whether the wifi settings change was
+	//		was successful.
+	//
+	// Also, note that we use Selectize to implement a nice combobox UI not available from ko or bootstrap and it
+	// doesn't really play nice with ko2. So some of the ick in NetSettings is there for directly interfacing with
+	// Selectize. If Octoprint ever transitions to ko3, this could be cleaned up.
+
+	self.settingsViewModel = settingsViewModel;
+
+	// TYPEA: flag to indicate the UI has been updated. This is necessary because we don't update the UI until the 
+	// Network Settings tab is shown. Thus, we need a flag to indicate that has happened so we don't re-initialize the
+	// UI if the user switches to another tab and back again. The uiUpdated flag gets cleared by our cleanupUI function,
+	// which is called when the settings dialog is dismissed
+	self.uiUpdated = false;
+
+	// TYPEA: guard flag to insure we don't install event handler callbacks on the alert dialog more than once. 
+	self.wifiAlertEventHandlersInstalled = false;
+
+	// TYPEA: interface to Selectize direct API. This gets set by the selectize custom ko binding in main.js. Weirdly,
+	// it seems Selectize's direct interface object can be accessed exactly once. The custom ko binding gets it first,
+	// so it propagates it to us using this instance variable.
+	self.selectize = null;
+
+	// TYPEA: initialization options for Selectize.
+	self.selectizeInitOptions = {
+		theme: 'selectize-dropdown [data-selectable]',
+		valueField: "id",
+		labelField: "name",
+		searchField: ["name"],
+		sortField: "id",
+		options: [],
+		maxItems: 1,
+		create: true,
+		persist: true
+	};
+
+	// TYPEA: the array of visible SSIDs, according to the server. 
+	self.visibleSSIDs = [];
+
+	self.settingsDialogWillShow = function() {
+		self.updateUI();
+	}
+
+	self.settingsDialogDidHide = function() {
+		self.tryToSave();
+		self.resetUI();
+		self.reset();
+	}
+
+	self.updateUI = function() {
+ 		console.log("updating network settings UI: " + !self.uiUpdated + ".");
+ 		
+ 		// TYPEA: if we've already set the network settings UI for the current invocation of the Settings dialog, then
+ 		// bail.
+ 		if (self.uiUpdated)
+  			return;
+ 
+		console.log("SettingsViewModel Selectize interface: ");
+		console.log(self.selectize);
+
+		// TYPEA: ask the server for the Beagle's current network config.
+		$.ajax({
+			url: API_BASEURL + "netsettings",
+			type: "GET",
+            cache: false,
+			dataType: "json",
+			success: function(response) {
+				console.log("received network settings for network settings tab.")
+				console.log(response);
+				self.initUI(response);
+			}
+		});
+
+		self.uiUpdated = true;
+ 	}
+
+	self.disableUI = function() {
+	}
+
+	self.initUI = function(response) {
+		console.log("self.initUI(): response from get settings request:")
+		console.log(response)
+
+		if (!"networkSettings" in response) {
+			self.disableUI();
+			return;
+		}
+
+		var netSettings = response.networkSettings;
+		self.ui_passkey = function() {
+		}
+		
+		if ("wifiPasskey" in netSettings) {
+			self.ui_passkey(netSettings.wifiPasskey);
+		}
+
+		self.visibleSSIDs.length = 0;
+		if ("wifiVisibleSSIDs" in netSettings) {
+			self.visibleSSIDs = netSettings.wifiVisibleSSIDs;
+		}
+		
+		console.log("Visible SSIDs: " + self.visibleSSIDs)
+
+		var selectedSSID = "";
+		if ("wifiSelectedSSID" in netSettings)
+			selectedSSID = netSettings.wifiSelectedSSID;
+
+		var noneSelected = false;
+		if ("wifiNoneSelected" in netSettings) {
+			noneSelected = netSettings.wifiNoneSelected;
+		} else {
+			noneSelected = (selectedSSID.length <= 0);
+		}
+
+		self.selectize.clearOptions();
+
+		var selectedCellID = 0
+		var visibleSSIDCount = self.visibleSSIDs.length;
+		if (visibleSSIDCount > 0) {
+			var noneOption = { id:0, name:"(none selected)" };
+			self.selectize.addOption(noneOption);
+	
+			var index = 0;
+			for (index = 0; index < visibleSSIDCount; ++index) {
+				var ssid = self.visibleSSIDs[index];
+				self.selectize.addOption(ssid);
+				if (ssid.name == selectedSSID && !noneSelected) {
+					selectedCellID = ssid.id;
+				}
+			}
+		} else {
+			var noneOption = { id:0, name:"(no wifi networks detected)" };
+			self.selectize.addOption(noneOption);
+		}
+
+		if ((selectedCellID == 0) && (selectedSSID.length > 0))
+		{
+			var invisibleOption = { id:-1, name:selectedSSID };
+			self.selectize.addOption(invisibleOption);
+			selectedCellID = -1
+		}
+
+		self.selectize.setValue(selectedCellID);
+		self.selectize.refreshOptions(false);		
+	}
+
+ 	self.resetUI = function() {	
+		// TYPEA: set our updated flag to false so we'll know to refresh the next time we're shown.
+		self.uiUpdated = false;
+ 	}
+ 
+ 	self.reset = function()
+ 	{
+ 		if (self.visibleSSID)
+ 			self.visibleSSIDs.length = 0;
+ 	}
+
+ 	self.tryToSave = function() {
+ 		if (!self.settingsViewModel.settingsSaved)
+ 			// TYPEA: don't do anyting if the user canceled the settings dialog.
+ 			return;
+ 
+ 		var selectedSSID = "";
+ 		var noneSelected = false;
+ 
+		var cellID = parseInt(self.selectize.getValue());
+		if (cellID != 0) {
+			var ssidInfo = self.selectize.getOption(cellID);
+			selectedSSID = ssidInfo.name;
+		} else {
+			noneSelected = true;
+		}
+
+		var wifiInfo = {
+			"wifiSelectedSSID": selectedSSID,
+			"wifiPasskey": self.ui_passkey(),
+			"wifiNoneSelected": noneSelected
+		};
+		
+        var postRequest = $.ajax({
+            url: API_BASEURL + "needsWifiChange",
+            type: "POST",
+            dataType: "json",
+            contentType: "application/json; charset=UTF-8",
+ 			timemout:10 * 1000,
+           	data: JSON.stringify(wifiInfo),
+            complete: function(response) {
+            	self.save(response.responseJSON, wifiInfo);
+            }
+        });
+    }
+
+	// TYPEA: make the save flags an instance variable, so we have access to them across multiple callbacks.
+	var saveFlags = {
+		'needsWifiConnect': false,
+		'needsWifiDisconnect': false,
+		'needsWifiSwitch': false,
+		'needsWifiDelete': false
+	}
+
+	self.save = function(response, wifiInfo)
+	{
+		if (!response)
+			return;
+
+		console.log("finishSave selected SSID: " + wifiInfo.selectedSSID + ", passkey " + wifiInfo.passkey);
+
+		self.saveFlags['needsWifiConnect'] = false;
+		self.saveFlags['needsWifiDisconnect'] = false;
+		self.saveFlags['needsWifiSwitch'] = false;
+		self.saveFlags['needsWifiDelete'] = false;
+
+		if ('wifNeedsChangeFlags' in response)
+		{
+			var responseFlags = response.wifNeedsChangeFlags;
+			if ('needsWifiConnect' in response)
+				self.saveFlags['needsWifiConnect'] = responseFlags.needsWifiConnect;
+			if ('needsWifiDisconnect' in response)
+				self.saveFlags['needsWifiDisconnect'] = responseFlags.needsWifiDisconnect;
+			if ('needsWifiSwitch' in response)
+				self.saveFlags['needsWifiSwitch'] = responseFlags.needsWifiSwitch;
+			if ('needsWifiDelete' in response)
+				self.saveFlags['needsWifiDelete'] = responseFlags.needsWifiDelete;
+		}
+		
+		console.log("needsWifiChange = " + self.saveFlags['needsWifiConnect']  + " " + self.saveFlags['needsWifiDisconnect'] + " " + self.saveFlags['needsWifiSwitch'] + " " + self.saveFlags['needsWifiDelete']);
+
+		if (!self.saveFlags['needsWifiConnect'] && !self.saveFlags['needsWifiDisconnect'] && !self.saveFlags['needsWifiSwitch'] && !self.saveFlags['needsWifiDelete'])
+			return;
+
+		var alertHeader = "";
+		if (self.saveFlags['needsWifiConnect'] )
+			alertHeader = "Connecting printer to wifi network \u201c" + wifiInfo.wifiSelectedSSID + "\u201d.";
+		else if (self.saveFlags['needsWifiSwitch'])
+			alertHeader = "Switching printer to wifi network \u201c" + wifiInfo.wifiSelectedSSID + "\u201d.";
+		else
+			alertHeader = "Disconnecting printer from wifi.";
+
+		$('#wifiAlertHeader').text(alertHeader);
+
+		var setWifiResponse = null;
+		
+		if (!self.wifiAlertEventHandlersInstalled) {
+			$('#wifiAlertModal').on('shown', function() { 
+				console.log("posting wifi settings change: " + wifiInfo.wifiSelectedSSID);
+			
+				// TYPEA: post the new wifi settings to the server once our modal is show. This will prevent access to
+				// to the rest of the Octoprint UI until the server responds.
+				$.ajax({
+					url: API_BASEURL + "setWifiSettings",
+					type: "POST",
+					timemout:6 * 60 * 1000,
+					dataType: "json",
+					contentType: "application/json; charset=UTF-8",
+					data: JSON.stringify(wifiInfo),
+					complete: function(response) {
+						console.log("setWifiSettings POST complete");
+						setWifiResponse = response.responseJSON;
+						$('#wifiAlertModal').modal('hide');
+					}
+				});
+			});
+
+			$('#wifiAlertModal').on('hidden', function() { 
+				self.displaySaveResult();
+			});
+			
+			self.wifiAlertEventHandlersInstalled = true;
+		}
+
+		$('#wifiAlertModal').modal('show');
+	}
+
+	self.displaySaveResult = function() {
+		// TYPEA: do something to notify the user about whether the settings change worked.
+	}
+
+	console.log("NetSettings() done.");
 }

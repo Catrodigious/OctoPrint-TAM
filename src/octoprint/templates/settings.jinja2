@@ -17,7 +17,9 @@
                 <li><a href="#settings_cura" data-toggle="tab">Cura</a></li>
                 {% if enableAccessControl %}<li><a href="#settings_users" data-toggle="tab">Access Control</a></li>{% endif %}
                 <li><a href="#settings_api" data-toggle="tab">Api</a></li>
+				{% if enableNetworkSettings %}
                 <li><a href="#settings_network" data-toggle="tab">Network Settings</a></li>
+				{% endif %}
                 <li class="nav-header">OctoPrint</li>
                 <li><a href="#settings_folder" data-toggle="tab">Folders</a></li>
                 <li><a href="#settings_appearance" data-toggle="tab">Appearance</a></li>
@@ -413,6 +415,28 @@
                         </div>
                     </form>
                 </div>
+                <!-- Type A Network Configuration -->
+                {% if enableNetworkSettings %}
+                <div class="tab-pane" id="settings_network">
+                	<form class="form-horizontal">
+                		<div class="control-group">
+                			<label class="control-label" for="settings-wifinetwork">SSID (Network Name)
+							</label>
+							<div class="controls">
+								<select id="settings-wifinetwork" databind="selectize: selectizeValues, value: selectizeValue">
+								</select>
+							</div>
+						</div>
+                       <div class="control-group">
+                            <label class="control-label" for="settings-wifipasskey">Password (if required)</label>
+                            <div class="controls">
+                                <input type="password" class="input-block-level" data-bind="value: wifi_passkey" id="settings-wifipasskey">
+                            </div>
+                        </div>
+                    </form>
+                </div>
+				{% endif %}
+                <!-- End Type A Network Configuration -->		
                 <div class="tab-pane" id="settings_api">
                     <form class="form-horizontal">
                         <div class="control-group">
@@ -430,6 +454,8 @@
                         </div>
                     </form>
                 </div>
+                
+                
 
                 {% if enableAccessControl %}
                 <div class="tab-pane" id="settings_users">
@@ -590,6 +616,7 @@
 
                 </div>
                 {% endif %}
+                
 
                 <div class="tab-pane" id="settings_logs" data-bind="allowBindings: false">
                     <div id="logs">
