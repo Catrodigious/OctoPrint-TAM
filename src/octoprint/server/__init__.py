@@ -59,6 +59,7 @@ def index():
 		enableSystemMenu=settings().get(["system"]) is not None and settings().get(["system", "actions"]) is not None and len(settings().get(["system", "actions"])) > 0,
 		enableAccessControl=userManager is not None,
 		enableSdSupport=settings().get(["feature", "sdSupport"]),
+		enableNetworkSettings = settings().get(["feature", "networkSettings"]),
 		firstRun=settings().getBoolean(["server", "firstRun"]) and (userManager is None or not userManager.hasBeenCustomized()),
 		debug=debug,
 		version=VERSION,

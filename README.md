@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 OctoPrint
 =========
 
@@ -76,3 +77,7 @@ at `~/Library/Application Support/OctoPrint` on MacOS.
 
 A comprehensive overview of all available configuration settings can be found
 [on the wiki](https://github.com/foosel/OctoPrint/wiki/Configuration).
+=======
+OctoPrint-TAM
+=============
+>>>>>>> c61c0541bea9fd12a0a229aca0beebcb2409a171
