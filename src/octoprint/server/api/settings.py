@@ -60,6 +60,7 @@ def getSettings():
 			"alwaysSendChecksum": s.getBoolean(["feature", "alwaysSendChecksum"]),
 			"sdSupport": s.getBoolean(["feature", "sdSupport"]),
 			"sdAlwaysAvailable": s.getBoolean(["feature", "sdAlwaysAvailable"]),
+			"networkSettings": s.getBoolean(["feature", "networkSettings"]),
 			"swallowOkAfterResend": s.getBoolean(["feature", "swallowOkAfterResend"]),
 			"repetierTargetTemp": s.getBoolean(["feature", "repetierTargetTemp"])
 		},
@@ -90,6 +91,10 @@ def getSettings():
 			"events": s.get(["system", "events"])
 		},
 		"terminalFilters": s.get(["terminalFilters"]),
+		"network": {
+			"ssid" : s.get(["network","ssid"]),
+			"password" : s.get(["network","password"])
+			},
 		"cura": {
 			"enabled": s.getBoolean(["cura", "enabled"]),
 			"path": s.get(["cura", "path"]),
@@ -140,6 +145,7 @@ def setSettings():
 			if "alwaysSendChecksum" in data["feature"].keys(): s.setBoolean(["feature", "alwaysSendChecksum"], data["feature"]["alwaysSendChecksum"])
 			if "sdSupport" in data["feature"].keys(): s.setBoolean(["feature", "sdSupport"], data["feature"]["sdSupport"])
 			if "sdAlwaysAvailable" in data["feature"].keys(): s.setBoolean(["feature", "sdAlwaysAvailable"], data["feature"]["sdAlwaysAvailable"])
+			if "networkSettings" in data["feature"].keys(): s.setBoolean(["feature", "networkSettings"], data["feature"]["networkSettings"])
 			if "swallowOkAfterResend" in data["feature"].keys(): s.setBoolean(["feature", "swallowOkAfterResend"], data["feature"]["swallowOkAfterResend"])
 			if "repetierTargetTemp" in data["feature"].keys(): s.setBoolean(["feature", "repetierTargetTemp"], data["feature"]["repetierTargetTemp"])
 
@@ -169,6 +175,13 @@ def setSettings():
 			if "timelapse" in data["folder"].keys(): s.setBaseFolder("timelapse", data["folder"]["timelapse"])
 			if "timelapseTmp" in data["folder"].keys(): s.setBaseFolder("timelapse_tmp", data["folder"]["timelapseTmp"])
 			if "logs" in data["folder"].keys(): s.setBaseFolder("logs", data["folder"]["logs"])
+			
+		if "network" in data.keys():
+			interface_name = "wlan0"
+			from setinterface import configure_interface
+			configure_interface(interface_name, data["network"]["ssid"], data["network"]["password"])
+
+			s.set(["network"], data["network"])
 
 		if "temperature" in data.keys():
 			if "profiles" in data["temperature"].keys(): s.set(["temperature", "profiles"], data["temperature"]["profiles"])

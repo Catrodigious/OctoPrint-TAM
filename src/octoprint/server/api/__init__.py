@@ -79,6 +79,77 @@ def apiVersion():
 		"api": octoprint.server.api.VERSION
 	})
 
+#~~ network setup
+@api.route("/netsettings", methods=["GET"])
+@restricted_access
+@admin_permission.require(403)
+def getNetworkSettings():
+    logger = logging.getLogger(__name__)
+    logger.info("getWifiSettings() called")
+
+    global wifiInterface
+    global wifiManager
+
+    netSettings = {'':''}
+    wifiManager.getSettings(wifiInterface, netSettings)
+    print("getNetworkSettings Server\n")
+    print ('WifiManager.getSettings(): final settings dict: \n')
+    print netSettings['wifiInterface']
+    print netSettings['wifiIPAddress']
+    print netSettings['printerIsPrinting']
+    print netSettings['wifiNoneSelected']
+    print netSettings['wifiSelectedSSID']
+    print netSettings['wifiPasskey']
+    print netSettings['wifiVisibleSSIDs']	
+
+    return jsonify({
+        "networkSettings": netSettings
+    }) 
+
+@api.route("/needsWifiChange", methods=["POST"])
+@restricted_access
+@admin_permission.require(403)
+def needsWifiChange():
+    logger = logging.getLogger(__name__)
+    logger.info("needsWifiChange() called")
+
+    global wifiInterface
+    global wifiManager
+
+    requestData = None
+    if "application/json" in request.headers["Content-Type"]:
+        requestData = request.json
+
+    wifiNeedsChangeResult = {}
+    wifiManager.needsSettingsChange(wifiInterface, requestData, wifiNeedsChangeResult)
+
+    return jsonify({
+        'wifiNeedsChangeResult': wifiNeedsChangeResult
+    })
+
+@api.route("/setWifiSettings", methods=["POST"])
+@restricted_access
+@admin_permission.require(403)
+def setWifiSettings():
+    logger = logging.getLogger(__name__)
+    logger.info("setWifiSettings() called")
+
+    global wifiInterface
+    global wifiManager
+
+    wifiSettingsChangeResult = {}
+
+    requestData = None
+    if "application/json" in request.headers["Content-Type"]:
+        requestData = request.json
+
+    wifiSettingsChangeResult = {}
+    wifiManager.setSettings(wifiInterface, requestData, wifiSettingsChangeResult)
+
+    return jsonify({
+        "wifiSettingsChangeResult": wifiSettingsChangeResult,
+    })
+
 #~~ system control
 
 
