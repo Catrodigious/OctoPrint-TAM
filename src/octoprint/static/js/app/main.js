@@ -288,6 +288,49 @@ $(function() {
             }
         }
 
+		console.log("installing selectize ko handler.");
+		ko.bindingHandlers.selectize = {
+			update: function (element, valueAccessor, allBindingsAccessor, viewModel) {
+				console.log("selectize update handler called.");
+
+				var options = null;
+				if ('selectizeInitOptions' in viewModel)
+					options = viewModel.selectizeInitOptions;
+				else
+				{
+					if (!allBindingsAccessor()['optionsText'])
+						allBindingsAccessor()['optionsText'] = 'name';
+					if (!allBindingsAccessor()['optionsValue'])
+						allBindingsAccessor()['optionsValue'] = 'id';
+					if (!allBindingsAccessor()['optionsCaption'])
+						allBindingsAccessor()['optionsCaption'] = 'Choose...';
+
+					options = {
+						valueField: allBindingsAccessor()['optionsValue'],
+						labelField: allBindingsAccessor()['optionsText'],
+						searchField: allBindingsAccessor()['optionsText']
+					}
+				}
+
+				var $select = $(element).selectize(options)[0].selectize;
+
+				 if (typeof init_selectize == 'function') {
+					init_selectize($select);
+				 }
+
+				if ('netSettings' in viewModel)
+					viewModel.netSettings.selectize = $select;
+
+				valueAccessor().subscribe(function (new_value) {
+					if (new_value) {
+						var new_obj = new_value[new_value.length - 1];
+						$select.addOption(new_obj);
+					}
+				});
+			}
+		}
+		console.log("selectize ko handler installed.");
+
         ko.bindingHandlers.allowBindings = {
         	init: function (elem, valueAccessor) {
         		return { controlsDescendantBindings: !valueAccessor() };

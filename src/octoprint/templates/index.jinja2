@@ -20,6 +20,11 @@
             <link href="{{ url_for('static', filename='css/octoprint.css') }}" rel="stylesheet" type="text/css" media="screen">
         {% endif %}
 
+<!-- 
+		TYPEA: include Selectize CSS
+ -->
+        <link href="{{ url_for('static', filename='css/selectize.bootstrap2.css') }}" rel="stylesheet" type="text/css" media="screen">
+
         <script lang="javascript">
             var BASEURL = "{{ url_for('index') }}";
             var API_BASEURL = BASEURL + "api/";
@@ -608,7 +613,7 @@
             </div>
         </div>
 
-        {% include 'settings.jinja2' %}
+       	{% include 'settings.jinja2' %}
         {% include 'dialogs.jinja2' %}
 
         <script type="text/javascript" src="{{ url_for('static', filename='js/lib/jquery/jquery.min.js') }}"></script>
@@ -632,6 +637,11 @@
         <script type="text/javascript" src="{{ url_for('static', filename='js/lib/moment.min.js') }}"></script>
         <script type="text/javascript" src="{{ url_for('static', filename='js/lib/pusher.color.min.js') }}"></script>
         <script type="text/javascript" src="{{ url_for('static', filename='js/lib/detectmobilebrowser.js') }}"></script>
+
+<!-- 
+		TYPEA: include Selectize js
+-->
+       <script type="text/javascript" src="{{ url_for('static', filename='js/lib/selectize.min.js') }}"></script>
 
         <!-- Include OctoPrint files -->
         <!-- TODO: merge/minimize in the future -->

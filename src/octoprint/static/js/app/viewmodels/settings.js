@@ -245,7 +245,7 @@ function SettingsViewModel(loginStateViewModel, usersViewModel) {
         self.terminalFilters(response.terminalFilters);
     };
 
-// TYPEA: FIXME: why do the net settings observables break if we move them to NetSettings()? I've tried qualifing
+	// TYPEA: FIXME: why do the net settings observables break if we move them to NetSettings()? I've tried qualifing
 	// their data binds with "netSettings." to no avail.
 	// TYPEA: these are bogus observables that are used initialize the Selectize widget's data bind. Selectize elements
 	// don't load properly if they don't have the data-bind set. But data-binding selectize elements doesn't actually
@@ -261,7 +261,7 @@ function SettingsViewModel(loginStateViewModel, usersViewModel) {
 	// back to false after the settings dialog is hidden.
 	self.settingsSaved = false;
 	
-	// TYPEA: falg to make sure we don't reinstall the settings dialog event handlers.
+	// TYPEA: flag to make sure we don't reinstall the settings dialog event handlers.
 	self.settingsDialogEventHandlersInstalled = false;
 
 	if (!self.settingsDialogEventHandlersInstalled)
@@ -368,8 +368,9 @@ function SettingsViewModel(loginStateViewModel, usersViewModel) {
     }
 }
 
-// TYPEA: NetSettings is a container all the stuff necessary to handle network settings, so that we keep from crowding
-// the view model with a zillion new nont-persistable variables.
+
+// TYPEA: NetSettings is a container for all the stuff necessary to handle network settings, so that we keep from
+// crowding the view model with a zillion new non-persistable variables.
 function NetSettings(settingsViewModel)
 {
     var self = this;
@@ -400,7 +401,7 @@ function NetSettings(settingsViewModel)
 	//		was successful.
 	//
 	// Also, note that we use Selectize to implement a nice combobox UI not available from ko or bootstrap and it
-	// doesn't really play nice with ko2. So some of the ick in NetSettings is there for directly interfacing with
+	// doesn't really play nice with ko2. Thus, some of the ick in NetSettings is there for directly interfacing with
 	// Selectize. If Octoprint ever transitions to ko3, this could be cleaned up.
 
 	self.settingsViewModel = settingsViewModel;
@@ -484,20 +485,15 @@ function NetSettings(settingsViewModel)
 			return;
 		}
 
-		var netSettings = response.networkSettings;
-		self.ui_passkey = function() {
-		}
-		
+		var netSettings = response.networkSettings;		
 		if ("wifiPasskey" in netSettings) {
-			self.ui_passkey(netSettings.wifiPasskey);
+			self.settingsViewModel.wifi_passkey(netSettings.wifiPasskey);
 		}
 
 		self.visibleSSIDs.length = 0;
 		if ("wifiVisibleSSIDs" in netSettings) {
 			self.visibleSSIDs = netSettings.wifiVisibleSSIDs;
 		}
-		
-		console.log("Visible SSIDs: " + self.visibleSSIDs)
 
 		var selectedSSID = "";
 		if ("wifiSelectedSSID" in netSettings)
@@ -561,18 +557,26 @@ function NetSettings(settingsViewModel)
  		var selectedSSID = "";
  		var noneSelected = false;
  
-		var cellID = parseInt(self.selectize.getValue());
-		if (cellID != 0) {
-			var ssidInfo = self.selectize.getOption(cellID);
-			selectedSSID = ssidInfo.name;
+		var selectedID = parseInt(self.selectize.getValue());
+		if (selectedID != 0) {
+			var visibleSSIDCount = self.visibleSSIDs.length;
+			var index = 0;
+			for (index = 0; index < visibleSSIDCount; ++index) {
+				var ssid = self.visibleSSIDs[index];
+				if (selectedID == ssid.id) {
+					selectedSSID = ssid.name;
+				}
+			}
 		} else {
 			noneSelected = true;
 		}
 
+		console.log("NetSettings.tryToSave(): selectedSSID: " + selectedSSID + ", wifiPasskey: " + self.settingsViewModel.wifi_passkey());
+
 		var wifiInfo = {
-			"wifiSelectedSSID": selectedSSID,
-			"wifiPasskey": self.ui_passkey(),
-			"wifiNoneSelected": noneSelected
+			'wifiSelectedSSID': selectedSSID,
+			'wifiPasskey': self.settingsViewModel.wifi_passkey(),
+			'wifiNoneSelected': noneSelected
 		};
 		
         var postRequest = $.ajax({
@@ -589,7 +593,7 @@ function NetSettings(settingsViewModel)
     }
 
 	// TYPEA: make the save flags an instance variable, so we have access to them across multiple callbacks.
-	var saveFlags = {
+	self.saveFlags = {
 		'needsWifiConnect': false,
 		'needsWifiDisconnect': false,
 		'needsWifiSwitch': false,
@@ -598,27 +602,36 @@ function NetSettings(settingsViewModel)
 
 	self.save = function(response, wifiInfo)
 	{
-		if (!response)
+		if (!"networkSettings" in response) {
+			self.disableUI();
 			return;
+		}
 
-		console.log("finishSave selected SSID: " + wifiInfo.selectedSSID + ", passkey " + wifiInfo.passkey);
+		if (!response || !('wifiNeedsChangeResult' in response)) {
+			return;
+		}
+
+		var needsChangeResult = response.wifiNeedsChangeResult;
+		
+		console.log("NetSettings.save(): selectedSSID: " + wifiInfo.wifiSelectedSSID + ", wifiPasskey: " + wifiInfo.wifiPasskey);
 
 		self.saveFlags['needsWifiConnect'] = false;
 		self.saveFlags['needsWifiDisconnect'] = false;
 		self.saveFlags['needsWifiSwitch'] = false;
 		self.saveFlags['needsWifiDelete'] = false;
 
-		if ('wifNeedsChangeFlags' in response)
+		if ('wifiNeedsChangeFlags' in needsChangeResult)
 		{
-			var responseFlags = response.wifNeedsChangeFlags;
-			if ('needsWifiConnect' in response)
-				self.saveFlags['needsWifiConnect'] = responseFlags.needsWifiConnect;
-			if ('needsWifiDisconnect' in response)
-				self.saveFlags['needsWifiDisconnect'] = responseFlags.needsWifiDisconnect;
-			if ('needsWifiSwitch' in response)
-				self.saveFlags['needsWifiSwitch'] = responseFlags.needsWifiSwitch;
-			if ('needsWifiDelete' in response)
-				self.saveFlags['needsWifiDelete'] = responseFlags.needsWifiDelete;
+			console.log("NetSettings.save(): getting wifiNeedsChangeFlags.");
+	
+			if ('needsWifiConnect' in needsChangeResult.wifiNeedsChangeFlags)
+				self.saveFlags['needsWifiConnect'] = needsChangeResult.wifiNeedsChangeFlags.needsWifiConnect;
+			if ('needsWifiDisconnect' in needsChangeResult.wifiNeedsChangeFlags)
+				self.saveFlags['needsWifiDisconnect'] = needsChangeResult.wifiNeedsChangeFlags.needsWifiDisconnect;
+			if ('needsWifiSwitch' in needsChangeResult.wifiNeedsChangeFlags)
+				self.saveFlags['needsWifiSwitch'] = needsChangeResult.wifiNeedsChangeFlags.needsWifiSwitch;
+			if ('needsWifiDelete' in needsChangeResult.wifiNeedsChangeFlags)
+				self.saveFlags['needsWifiDelete'] = needsChangeResult.wifiNeedsChangeFlags.needsWifiDelete;
 		}
 		
 		console.log("needsWifiChange = " + self.saveFlags['needsWifiConnect']  + " " + self.saveFlags['needsWifiDisconnect'] + " " + self.saveFlags['needsWifiSwitch'] + " " + self.saveFlags['needsWifiDelete']);
@@ -643,7 +656,7 @@ function NetSettings(settingsViewModel)
 				console.log("posting wifi settings change: " + wifiInfo.wifiSelectedSSID);
 			
 				// TYPEA: post the new wifi settings to the server once our modal is show. This will prevent access to
-				// to the rest of the Octoprint UI until the server responds.
+				// the rest of the Octoprint UI until the server responds.
 				$.ajax({
 					url: API_BASEURL + "setWifiSettings",
 					type: "POST",
