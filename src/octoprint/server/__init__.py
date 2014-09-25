@@ -24,6 +24,8 @@ gcodeManager = None
 userManager = None
 eventManager = None
 loginManager = None
+wifiManager = None
+wifiInterface  = "wlan0"
 
 principals = Principal(app)
 admin_permission = Permission(RoleNeed("admin"))
@@ -39,7 +41,7 @@ import octoprint.users as users
 import octoprint.events as events
 import octoprint.timelapse
 import octoprint._version
-
+from octoprint.server.api.wifi import WifiManager
 
 
 versions = octoprint._version.get_versions()
@@ -117,6 +119,8 @@ class Server():
 		global eventManager
 		global loginManager
 		global debug
+		global wifiManager
+
 
 		from tornado.wsgi import WSGIContainer
 		from tornado.httpserver import HTTPServer
@@ -137,6 +141,8 @@ class Server():
 		eventManager = events.eventManager()
 		gcodeManager = gcodefiles.GcodeManager()
 		printer = Printer(gcodeManager)
+
+		wifiManager = WifiManager(printer)
 
 		# configure timelapse
 		octoprint.timelapse.configureTimelapse()

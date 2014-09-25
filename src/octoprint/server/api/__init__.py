@@ -60,7 +60,6 @@ def firstRunSetup():
 
 #~~ system state
 
-
 @api.route("/state", methods=["GET"])
 @restricted_access
 def apiPrinterState():
@@ -84,23 +83,10 @@ def apiVersion():
 @restricted_access
 @admin_permission.require(403)
 def getNetworkSettings():
-    logger = logging.getLogger(__name__)
-    logger.info("getWifiSettings() called")
+    wifiInterface = octoprint.server.wifiInterface
+    wifiManager = octoprint.server.wifiManager
 
-    global wifiInterface
-    global wifiManager
-
-    netSettings = {'':''}
-    wifiManager.getSettings(wifiInterface, netSettings)
-    print("getNetworkSettings Server\n")
-    print ('WifiManager.getSettings(): final settings dict: \n')
-    print netSettings['wifiInterface']
-    print netSettings['wifiIPAddress']
-    print netSettings['printerIsPrinting']
-    print netSettings['wifiNoneSelected']
-    print netSettings['wifiSelectedSSID']
-    print netSettings['wifiPasskey']
-    print netSettings['wifiVisibleSSIDs']	
+    netSettings = wifiManager.getSettings(wifiInterface)
 
     return jsonify({
         "networkSettings": netSettings
@@ -113,15 +99,13 @@ def needsWifiChange():
     logger = logging.getLogger(__name__)
     logger.info("needsWifiChange() called")
 
-    global wifiInterface
-    global wifiManager
-
     requestData = None
     if "application/json" in request.headers["Content-Type"]:
         requestData = request.json
 
-    wifiNeedsChangeResult = {}
-    wifiManager.needsSettingsChange(wifiInterface, requestData, wifiNeedsChangeResult)
+    wifiInterface = octoprint.server.wifiInterface
+    wifiManager = octoprint.server.wifiManager
+    wifiNeedsChangeResult = wifiManager.needsSettingsChange(wifiInterface, requestData)
 
     return jsonify({
         'wifiNeedsChangeResult': wifiNeedsChangeResult
@@ -134,17 +118,13 @@ def setWifiSettings():
     logger = logging.getLogger(__name__)
     logger.info("setWifiSettings() called")
 
-    global wifiInterface
-    global wifiManager
-
-    wifiSettingsChangeResult = {}
-
     requestData = None
     if "application/json" in request.headers["Content-Type"]:
         requestData = request.json
 
-    wifiSettingsChangeResult = {}
-    wifiManager.setSettings(wifiInterface, requestData, wifiSettingsChangeResult)
+    wifiInterface = octoprint.server.wifiInterface
+    wifiManager = octoprint.server.wifiManager
+    wifiSettingsChangeResult = wifiManager.setSettings(wifiInterface, requestData)
 
     return jsonify({
         "wifiSettingsChangeResult": wifiSettingsChangeResult,
