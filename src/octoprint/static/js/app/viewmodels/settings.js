@@ -278,12 +278,15 @@ function SettingsViewModel(loginStateViewModel, usersViewModel) {
 		// TYPEA: install an event handler to to tell the network settings to save (see below) and also to reset the
 		// settingsSaved flag after the settings dialog is hidden.
 		$('#settings_dialog').on('hidden', function() {
+			console.log("NetSettings: handling settings dialog hidden event.");
 			self.netSettings.settingsDialogDidHide(self.settingsSaved);
 			self.settingsSaved = false;
 		});
 	}
 
     self.saveData = function() {
+		self.settingsSaved = true;
+
         var data = {
             "api" : {
                 "enabled": self.api_enabled(),
@@ -440,8 +443,8 @@ function NetSettings(settingsViewModel)
 		self.updateUI();
 	}
 
-	self.settingsDialogDidHide = function() {
-		self.tryToSave();
+	self.settingsDialogDidHide = function(saveSettings) {
+		self.tryToSave(saveSettings);
 		self.resetUI();
 		self.reset();
 	}
@@ -549,11 +552,15 @@ function NetSettings(settingsViewModel)
  			self.visibleSSIDs.length = 0;
  	}
 
- 	self.tryToSave = function() {
- 		if (!self.settingsViewModel.settingsSaved)
+ 	self.tryToSave = function(saveSettings) {
+ 		console.log("NetSettings.tryToSave() called.");
+
+		if (!saveSettings)
  			// TYPEA: don't do anyting if the user canceled the settings dialog.
  			return;
  
+  		console.log("NetSettings.tryToSave() attempting to save.");
+
  		var selectedSSID = "";
  		var noneSelected = false;
  
