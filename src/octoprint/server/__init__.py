@@ -25,7 +25,7 @@ userManager = None
 eventManager = None
 loginManager = None
 wifiManager = None
-wifiInterface  = "ra0"
+wifiInterface  = "wlan0"
 
 principals = Principal(app)
 admin_permission = Permission(RoleNeed("admin"))
