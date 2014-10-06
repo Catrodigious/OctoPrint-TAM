@@ -511,7 +511,8 @@ class Scheme(object):
         try:
             return cls.where(lambda s: s.interface == interface)[0]
         except IndexError:
-            return None
+        	print("Returning none as the interface isn't in the config file")
+        	return None
 
 
     @classmethod
@@ -532,6 +533,7 @@ class Scheme(object):
     #   writing to files that aren't /etc/network/interfaces, which is handy for not blowing up the Beagle while testing
     #   this code. 
     def save_to_file(self, file, autoConnect = True):
+    	print("save_to_file initiated.")
         with open(file, 'r+') as f:
             fileLines = f.readlines()
             
@@ -572,6 +574,7 @@ class Scheme(object):
             for lineIndex in range(len(stanzaLines)):
                 insertIndex = startLine + lineIndex
                 fileLines.insert(insertIndex, stanzaLines[lineIndex])
+                print("Save to file line index output: %s \n"%insertIndex)
 
             # TYPEA: reassemble the file content.
             content = ""
@@ -589,8 +592,9 @@ class Scheme(object):
         """
         Writes the configuration to the :attr:`osInterfacesFile` file.
         """
-
+        print("Attempting save to file")
         self.save_to_file(self.osInterfacesFile, autoConnect)
+
 
 
     # TYPEA: different from original: new class method, mostly for testing purposes.
@@ -612,15 +616,15 @@ class Scheme(object):
         """
         Deletes the configuration from the specified file.
         """
- 
+        print("Delete from file was initiated - INCOMPLETE")
         with open(file, 'r+') as f:
             fileLines = f.readlines()
-
+            
             # TYPEA: remove our interface from the file's line array.
             if not remove_interface_stanza(self.interface, fileLines):
                 return
 
-
+		
             # TYPEA: reassemble the file content without the deleted lines
             content = ""
             for line in fileLines:
@@ -630,7 +634,7 @@ class Scheme(object):
             f.seek(0)
             f.write(content)
             f.truncate()
-
+            print("Delete from file has inititated - COMPLETE")
 
     # TYPEA: different from original: reworked to call delete_from_file.
     def delete(self):
@@ -648,14 +652,16 @@ class Scheme(object):
         """
         Connects to the network as configured in this scheme.
         """
+        print("'/Activate/' function has been initiated.")
         if passkey:
             self.passkey = passkey
 
         print 'Scheme.activate(): passkey = {}.'.format(self.passkey)
 
         try:
-            subprocess.check_output(['/sbin/ifdown', self.interface], stderr=subprocess.STDOUT)
-            print 'Scheme.activate(): ifdown succeeded.'
+        	print ("Attempting to use sudo /sbin/ifdown.")
+        	subprocess.check_output(['sudo /sbin/ifdown ' + self.interface], shell = True, stderr=subprocess.STDOUT)
+        	print 'Scheme.activate(): ifdown succeeded.'
         except subprocess.CalledProcessError as e:
             print 'Scheme.activate(): exception caught: {}.'.format(e)
             raise InterfaceError(e.output.strip())
@@ -663,16 +669,23 @@ class Scheme(object):
         try:
             # TYPEA: different from original: ifup on our Beagle doesn't return the IP address in its output, so we ignore
             #      its output and call ifconfig to determine if we have a valid IP (meaning the connection succeeded).
-            subprocess.check_output(['/sbin/ifup'] + self.ifup_args(), stderr=subprocess.STDOUT)
+            print("Ifup argument: %s" % self.ifup_args())
+            ifupString = ""
+            for item in self.ifup_args():
+            	ifupString += "'" + item + "'" + " "
+            print("ifupString = %s" % ifupString)
+            
+            subprocess.check_output(['sudo /sbin/ifup ' + ifupString], shell = True, stderr=subprocess.STDOUT)
             print 'Scheme.activate(): ifup succeeded.'
         except subprocess.CalledProcessError as e:
             raise InterfaceError(e.output.strip())
 
         # TYPEA: different from original: call ifconfig.
-        ifconfig_output = subprocess.check_output(['/sbin/ifconfig', self.interface], stderr=subprocess.STDOUT)
+        ifconfig_output = subprocess.check_output(['/sbin/ifconfig ' +  self.interface], shell = True, stderr=subprocess.STDOUT)
         ifconfig_output = ifconfig_output.decode('utf-8')
         print 'Scheme.activate(): ifconfig succeeded.'
-
+        print("Ifconfig output string: %s" %ifconfig_output)
+        #print("Previous: " + subprocess.check_output(['/sbin/ifconfig', selfinterface], shell = True, stderr=subprocess.STDOUT))
         return self.parse_ifconfig_output(ifconfig_output)
 
 
@@ -725,7 +738,7 @@ def schemes_from_file(file, scheme_class=Scheme):
 #      scheme_re = re.compile(r'iface\s+(?P<interface>wlan\d?)(?:-(?P<name>\w+))?')
 
 wlan_re = re.compile(r'iface\s+(?P<interface>wlan\d?)(?:-(?P<name>\w+))?')
-ra_re = re.compile(r'iface\s+(?P<interface>ra\d?)(?:-(?P<name>\w+))?')
+#ra_re = re.compile(r'iface\s+(?P<interface>ra\d?)(?:-(?P<name>\w+))?')
 
 #  TYPEA: FIXME: note the above regexps are slightly wrong for the version of iwlist that we use. The line listing the
 #      interface we get back from iwlist only contains the interface and not the name. Someone who knows regexp better
@@ -766,8 +779,8 @@ def find_interface_stanzas(lines, countTrailingWS):
         if line and not line.startswith('#'):
             # TYPEA: use our interface regexps to figure out if this is the start of a stanza.
             match = wlan_re.match(line)
-            if not match:
-                match = ra_re.match(line)
+            #if not match:
+             #   match = ra_re.match(line)
             if match:
                 interface = match.group('interface')
 
@@ -898,12 +911,11 @@ def remove_interface_stanza(interface, lines):
 class WifiManager(object):
 
     def __init__(self, printer):
-    	print "WifiManager initialized."
         self._printer = printer
 
 
     def interfaceIP(self, interface):
-        output = subprocess.check_output(['/sbin/ifconfig', interface], stderr=subprocess.STDOUT)
+        output = subprocess.check_output(['sudo /sbin/ifconfig ' + interface], shell = True, stderr=subprocess.STDOUT)
         output = output.decode('utf-8')
 
         matches = bound_ip_re.search(output)
@@ -923,7 +935,8 @@ class WifiManager(object):
 
     def disconnect(self, interface):
         try:
-            subprocess.check_output(['/sbin/ifdown', interface], stderr=subprocess.STDOUT)
+        	print("Disconnecting via ifdown.")
+        	subprocess.check_output(['sudo /sbin/ifdown ' + interface], shell = True, stderr=subprocess.STDOUT)
         except:
             pass
 
@@ -1060,8 +1073,10 @@ class WifiManager(object):
                 noneSelected = requestData['wifiNoneSelected']
             if not noneSelected:
                 validRequest = (len(selectedSSID) > 0)
+                print("Valid Request: %s"%validRequest)
 
             if validRequest:
+            	print("Valid request = True")
                 if noneSelected:
                     currentScheme = Scheme.for_interface(interface)
                     if currentScheme:
@@ -1080,8 +1095,10 @@ class WifiManager(object):
 
                     if selectedCell:
                         newScheme = Scheme.for_cell(interface, selectedCell, passkey)
+                        print("Got to connection variable.")
                         try:
                             connection = newScheme.activate()
+                            print("Connection (newScheme.activate()has succeeded.")
                             newScheme.save()
                             succeeded = True
                             ipAddress = connection.ip_address
