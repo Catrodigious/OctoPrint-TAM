@@ -41,7 +41,7 @@ import octoprint.users as users
 import octoprint.events as events
 import octoprint.timelapse
 import octoprint._version
-from octoprint.server.api.wifi import WifiManager
+import octoprint.wifi as wifi
 
 
 versions = octoprint._version.get_versions()
@@ -142,7 +142,7 @@ class Server():
 		gcodeManager = gcodefiles.GcodeManager()
 		printer = Printer(gcodeManager)
 
-		wifiManager = WifiManager(printer)
+		wifiManager = wifi.WifiManager(printer)
 
 		# configure timelapse
 		octoprint.timelapse.configureTimelapse()
