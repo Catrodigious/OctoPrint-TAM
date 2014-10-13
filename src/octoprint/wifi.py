@@ -384,7 +384,6 @@ class Scheme(object):
 
         return ""
 
-
     @passkey.setter
     def passkey(self, value):
         key = self.passkey_id
@@ -394,6 +393,15 @@ class Scheme(object):
             self._options[key] = passkey
         else:
             self._options.pop(key, None)
+
+
+    # TYPEA: different from original: new property, return the ID string of the SSID option for this Scheme.
+    @property
+    def ssid_id(self):
+        if self.encryption_type == 'wpa':
+            return 'wpa-ssid'
+
+        return 'wireless-essid'
 
 
     # TYPEA: different from original: new property, return the ID string of the passkey option for this Scheme.
@@ -429,9 +437,9 @@ class Scheme(object):
     def encryption_type(self):
         if 'wpa-ssid' in self._options:
             return 'wpa'
-        elif 'wpa-psk' in self._options:
+        if 'wpa-psk' in self._options:
             return 'wpa'
-        elif 'wireless-key' in self._options:
+        if 'wireless-key' in self._options:
             return 'wep'
 
         return "unknown"
@@ -445,9 +453,12 @@ class Scheme(object):
             
         if ssid != self.ssid:
             return False
-            
+
+        newPasskey = ''
+        if passkey:
+            newPasskey = passkey.strip('"')
         selfPasskey = self.passkey
-        if (passkey != selfPasskey) or (not passkey and len(selfPasskey) > 0):
+        if (newPasskey != selfPasskey) or (not newPasskey and len(selfPasskey) > 0):
             return False
 
         cell = find_cell(interface, ssid)
@@ -465,10 +476,15 @@ class Scheme(object):
         ifupOptions = deepcopy(self._options)
 
         #  TYPEA: replace the passkey with the PSK. If the network is WPA, the PSK is the encrypted version of the
-        #      passkey.
+        #      passkey. Also, put the passkey in double quotes.
         psk = self.psk
         if psk:
-            ifupOptions[self.passkey_id] = psk
+            ifupOptions[self.passkey_id] = '"{}"'.format(psk)
+
+        #  TYPEA: put the SSID in double quotes.
+        ssid = self.ssid
+        if ssid:
+            ifupOptions[self.ssid_id] = '"{}"'.format(ssid)
 
         if self.encryption_type != 'wep':
             # TYPEA: why do we not set auto channel on encrypted WEP nets? This logic is carried over from original
@@ -652,39 +668,43 @@ class Scheme(object):
         """
         Connects to the network as configured in this scheme.
         """
-        print("'/Activate/' function has been initiated.")
+        print('Scheme.activate() called.')
         if passkey:
             self.passkey = passkey
 
         print 'Scheme.activate(): passkey = {}.'.format(self.passkey)
 
         try:
-        	print ("Attempting to use sudo /sbin/ifdown.")
-        	subprocess.check_output(['sudo /sbin/ifdown ' + self.interface], shell = True, stderr=subprocess.STDOUT)
-        	print 'Scheme.activate(): ifdown succeeded.'
-        except subprocess.CalledProcessError as e:
-            print 'Scheme.activate(): exception caught: {}.'.format(e)
-            raise InterfaceError(e.output.strip())
+            ifdownArgs = ['sudo /sbin/ifdown ' + self.interface]
+            print 'Scheme.activate(): calling ifdown with args: {}'.format(ifdownArgs)
+
+            subprocess.check_output(ifdownArgs, shell=True, stderr=subprocess.STDOUT)
+            print 'Scheme.activate(): ifdown succeeded.'
+        except Exception as unknownException:
+            print 'Scheme.activate(): ifdown unknown exception caught: {}.'.format(unknownException)
+            raise InterfaceError(unknownException.output.strip())
+        except subprocess.CalledProcessError as subProcException:
+            print 'Scheme.activate(): ifdown subprocess exception caught: {}.'.format(subProcException)
+            raise InterfaceError(subProcException.output.strip())
 
         try:
-            # TYPEA: different from original: ifup on our Beagle doesn't return the IP address in its output, so we ignore
-            #      its output and call ifconfig to determine if we have a valid IP (meaning the connection succeeded).
-            print("Ifup argument: %s" % self.ifup_args())
-            ifupString = ""
-            for item in self.ifup_args():
-            	ifupString += '"' + item + '"' + ' '
-            print("ifupString = %s" % ifupString)
-            
-            subprocess.check_output(['sudo /sbin/ifup ' + ifupString], shell = True, stderr=subprocess.STDOUT)
+            # TYPEA: different from original: ifup on our Beagle doesn't return the IP address in its output, so we
+            #   ignore its output and get the IP address later.
+            ifupArgs = ['sudo', '/sbin/ifup'] + self.ifup_args()
+            print 'Scheme.activate(): calling ifup with args: {}'.format(ifupArgs)
+
+            subprocess.check_output(ifupArgs, shell=True, stderr=subprocess.STDOUT)
             print 'Scheme.activate(): ifup succeeded.'
         except subprocess.CalledProcessError as e:
+            print 'Scheme.activate(): ifup exception caught: {}.'.format(e)
             raise InterfaceError(e.output.strip())
 
-        # TYPEA: different from original: call ifconfig.
-        ifconfig_output = subprocess.check_output(['/sbin/ifconfig ' +  self.interface], shell = True, stderr=subprocess.STDOUT)
+        # TYPEA: different from original: call ifconfig to determine if we have a valid IP (meaning the connection
+        #   succeeded).
+        ifconfig_output = subprocess.check_output(['/sbin/ifconfig', self.interface], shell = True, stderr=subprocess.STDOUT)
         ifconfig_output = ifconfig_output.decode('utf-8')
-        print 'Scheme.activate(): ifconfig succeeded.'
-        print("Ifconfig output string: %s" %ifconfig_output)
+        print 'Scheme.activate(): ifconfig output string: "{}".'.format(ifconfig_output)
+
         #print("Previous: " + subprocess.check_output(['/sbin/ifconfig', selfinterface], shell = True, stderr=subprocess.STDOUT))
         return self.parse_ifconfig_output(ifconfig_output)
 
@@ -915,7 +935,7 @@ class WifiManager(object):
 
 
     def interfaceIP(self, interface):
-        output = subprocess.check_output(['sudo /sbin/ifconfig ' + interface], shell = True, stderr=subprocess.STDOUT)
+        output = subprocess.check_output(['/sbin/ifconfig', interface], shell = True, stderr=subprocess.STDOUT)
         output = output.decode('utf-8')
 
         matches = bound_ip_re.search(output)
@@ -935,8 +955,8 @@ class WifiManager(object):
 
     def disconnect(self, interface):
         try:
-        	print("Disconnecting via ifdown.")
-        	subprocess.check_output(['sudo /sbin/ifdown ' + interface], shell = True, stderr=subprocess.STDOUT)
+        	print 'Scheme.disconnect() called.'
+        	subprocess.check_output(['/sbin/ifdown', interface], shell = True, stderr=subprocess.STDOUT)
         except:
             pass
 
