@@ -498,11 +498,18 @@ class Scheme(object):
     #      to the Scheme's interface using ifup.
     def ifup_args(self):
         options = self.options_for_ifup()
-        args = list(itertools.chain.from_iterable(
-            ('-o', '{k}={v}'.format(k=k, v=v)) for k, v in options.items()))
+        
+        argsString = self.interface
+        for k, v in options.iteritems():
+        	argsString = argsString + ' -o {0}={1}'.format(k, v)
+        
+        return argsString
 
-        # TYPEA: different from original: ifup on our Beagle uses slightly different args format.
-        return [self.interface] + args
+#         args = list(itertools.chain.from_iterable(
+#             ('-o', '{k}={v}'.format(k=k, v=v)) for k, v in options.items()))
+# 
+#         # TYPEA: different from original: ifup on our Beagle uses slightly different args format.
+#         return [self.interface] + args
 
 
     @classmethod
@@ -690,10 +697,12 @@ class Scheme(object):
         try:
             # TYPEA: different from original: ifup on our Beagle doesn't return the IP address in its output, so we
             #   ignore its output and get the IP address later.
-            ifupArgs = ['sudo', '/sbin/ifup'] + self.ifup_args()
-            print 'Scheme.activate(): calling ifup with args: {}'.format(ifupArgs)
+            ifupArgs = self.ifup_args()
 
-            subprocess.check_output(ifupArgs, shell=True, stderr=subprocess.STDOUT)
+            cmdString = 'sudo /sbin/ifup ' + ifupArgs
+            print 'Scheme.activate(): calling ifup with command: {}'.format(cmdString)
+
+            subprocess.check_output([cmdString], shell=True, stderr=subprocess.STDOUT)
             print 'Scheme.activate(): ifup succeeded.'
         except subprocess.CalledProcessError as e:
             print 'Scheme.activate(): ifup exception caught: {}.'.format(e)
@@ -701,7 +710,7 @@ class Scheme(object):
 
         # TYPEA: different from original: call ifconfig to determine if we have a valid IP (meaning the connection
         #   succeeded).
-        ifconfig_output = subprocess.check_output(['/sbin/ifconfig', self.interface], shell = True, stderr=subprocess.STDOUT)
+        ifconfig_output = subprocess.check_output(['/sbin/ifconfig', self.interface], shell=True, stderr=subprocess.STDOUT)
         ifconfig_output = ifconfig_output.decode('utf-8')
         print 'Scheme.activate(): ifconfig output string: "{}".'.format(ifconfig_output)
 
