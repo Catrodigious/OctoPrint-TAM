@@ -43,6 +43,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import textwrap
 
 from copy import deepcopy
@@ -704,9 +705,9 @@ class Scheme(object):
 
             subprocess.check_output([cmdString], shell=True, stderr=subprocess.STDOUT)
             print 'Scheme.activate(): ifup succeeded.'
-        except subprocess.CalledProcessError as e:
-            print 'Scheme.activate(): ifup exception caught: {}.'.format(e)
-            raise InterfaceError(e.output.strip())
+        except subprocess.CalledProcessError as subProcException:
+            print 'Scheme.activate(): ifup exception caught: {}.'.format(subProcException)
+            raise InterfaceError(subProcException.output.strip())
 
         # TYPEA: different from original: call ifconfig to determine if we have a valid IP (meaning the connection
         #   succeeded).
@@ -954,7 +955,52 @@ class WifiManager(object):
         return None
 
 
-    def interfaceIsConnected(self, interface):
+    def isInterfacEnabled(self, interface):
+        enabled = True
+ 
+        try:
+            iwlist_scan = subprocess.check_output(['/sbin/iwlist', interface, 'scan'], stderr=subprocess.STDOUT)
+        except subprocess.CalledProcessError as subProcException:
+            print 'WifiManager.isInterfacEnabled: caught subproc exception.'
+            iwlist_scan = subProcException.output.strip()
+            iwlist_scan = iwlist_scan.decode('utf-8').lower()
+            enabled = (not 'network is down' in iwlist_scan)
+
+        return enabled
+
+
+    def enableInterface(self, interface, loadConfig):
+        print 'WifiManager.enableInterface(...): loadConfig = {}'.format(loadConfig)
+
+        cmdString = 'sudo /sbin/ifup ' + interface
+        if loadConfig:
+            try:
+                print 'WifiManager.enableInterface(...): calling ifup with command: {}'.format(cmdString)
+
+                subprocess.check_output([cmdString], shell=True, stderr=subprocess.STDOUT)
+                print 'WifiManager.enableInterface(...): ifup succeeded.'
+            except subprocess.CalledProcessError as subProcException:
+                print 'WifiManager.enableInterface(...): ifup exception caught: {}.'.format(subProcException)
+                raise InterfaceError(subProcException.output.strip())
+        else:
+            with tempfile.NamedTemporaryFile(mode='r+') as tmpIfaceFile:
+                tmpIfaceFile.write('auto ' + interface + '\n')
+                tmpIfaceFile.write('iface ' + interface + ' inet dhcp')
+                
+                ifupArgs = ' -i "{}"'.format(tmpIfaceFile.name)
+                cmdString = cmdString + ifupArgs
+
+                try:
+                    print 'WifiManager.enableInterface(...): calling ifup with command: {}'.format(cmdString)
+
+                    subprocess.check_output([cmdString], shell=True, stderr=subprocess.STDOUT)
+                    print 'WifiManager.enableInterface(...): ifup succeeded.'
+                except subprocess.CalledProcessError as subProcException:
+                    print 'WifiManager.enableInterface(...): ifup exception caught: {}.'.format(subProcException)
+                    raise InterfaceError(subProcException.output.strip())
+
+
+    def isInterfaceConnected(self, interface):
         ip = self.interfaceIP(interface)
         if ip:
             return (len(ip) > 0)
@@ -964,8 +1010,8 @@ class WifiManager(object):
 
     def disconnect(self, interface):
         try:
-        	print 'Scheme.disconnect() called.'
-        	subprocess.check_output(['/sbin/ifdown', interface], shell = True, stderr=subprocess.STDOUT)
+        	print 'Scheme.disconnect(...) called.'
+        	subprocess.check_output(['sudo /sbin/ifdown ' + interface], shell=True, stderr=subprocess.STDOUT)
         except:
             pass
 
@@ -976,6 +1022,7 @@ class WifiManager(object):
 
         return {
             'wifiInterface': interface,
+            'wifiEnabled': False,
             'wifiNoneSelected': True,
             'wifiSelectedSSID': '',
             'wifiPasskey': ''
@@ -994,22 +1041,24 @@ class WifiManager(object):
         passkey = ""
         noneSelected = True
         visibleSSIDs = []
+        enabled = False
 
         currentScheme = Scheme.for_interface(interface)
         if currentScheme:
             passkey = currentScheme.passkey
             selectedSSID = currentScheme.ssid
             noneSelected = False
-#           print 'WifiManager.getSettings(): current scheme = {0}'.format(currentScheme)
 
-        visibleCells = Cell.visible(interface)
-        if visibleCells:
-            for cell in visibleCells:
-                ssidInfo = {'id': cell.id, 'name': cell.ssid}
-                visibleSSIDs.append(ssidInfo)
- #              print 'WifiManager.getSettings(): visible cell detected: (id: {0}, name: {1}).'.format(ssidInfo['id'], ssidInfo['name'])
+        enabled = self.isInterfacEnabled(interface)
+        if enabled:
+            visibleCells = Cell.visible(interface)
+            if visibleCells:
+                for cell in visibleCells:
+                    ssidInfo = {'id': cell.id, 'name': cell.ssid}
+                    visibleSSIDs.append(ssidInfo)
 
         settingsDict['wifiInterface'] = interface
+        settingsDict['wifiEnabled'] = enabled
         settingsDict['wifiIPAddress'] = self.interfaceIP(interface)
         settingsDict['printerIsPrinting'] = self._printer.isPrinting()
         settingsDict['wifiNoneSelected'] = noneSelected
@@ -1028,10 +1077,9 @@ class WifiManager(object):
         print 'WifiManager.needsSettingsChange() called for interface "{0}".'.format(interface)
         print 'WifiManager.needsSettingsChange(): requestData = {}.'.format(requestData)
 
+        needsWifiDisabled = False
         needsWifiConnect = False
-        needsWifiDisconnect = False
         needsWifiSwitch = False
-        needsWifiDelete = False
         noneSelected = False
         validRequest = True
 
@@ -1039,6 +1087,12 @@ class WifiManager(object):
             selectedSSID = ""
             passkey = ""
             noneSelected = False
+            enabled = False
+
+            if 'wifiEnabled' in requestData:
+                enabled = requestData['wifiEnabled']
+            else:
+                validRequest = False
 
             if 'wifiSelectedSSID' in requestData:
                 selectedSSID = requestData['wifiSelectedSSID']
@@ -1046,30 +1100,32 @@ class WifiManager(object):
                 passkey = requestData['wifiPasskey']
             if 'wifiNoneSelected' in requestData:
                 noneSelected = requestData['wifiNoneSelected']
-            if not noneSelected:
+            if enabled and not noneSelected:
                 validRequest = (len(selectedSSID) > 0)
 
             if validRequest:        
-                currentScheme = Scheme.for_interface(interface)
                 if noneSelected:
-                    needsWifiDelete = (currentScheme != None)
-                    needsWifiDisconnect = self.isConnected
-                else:
-                    if not currentScheme or not currentScheme.matches(interface, selectedSSID, passkey):
-                        if self.interfaceIsConnected(interface):
+                    needsWifiDisabled = self.isInterfacEnabled(interface)
+                elif enabled:
+                    if not self.isInterfacEnabled(interface):
+                        if selectedSSID:
+                            needsWifiConnect = True
+                    elif not currentScheme or not currentScheme.matches(interface, selectedSSID, passkey):
+                        if self.isInterfaceConnected(interface):
                             needsWifiSwitch = True
                         else:
                             needsWifiConnect = True
+                else:
+                    needsWifiDisabled = self.isInterfacEnabled(interface)
 
         responseDict = {
             'wifiInterface': interface,
             'wifiIPAddress': self.interfaceIP(interface),
             'printerIsPrinting': self._printer.isPrinting(),
             'wifiNeedsChangeFlags': {
+                'needsWifiDisabled': needsWifiDisabled,
                 'needsWifiConnect': needsWifiConnect,
-                'needsWifiDisconnect': needsWifiDisconnect,
                 'needsWifiSwitch': needsWifiSwitch,
-                'needsWifiDelete': needsWifiDelete,
             }
         }
 
@@ -1090,9 +1146,15 @@ class WifiManager(object):
         ipAddress = self.interfaceIP(interface)
 
         if requestData:
+            enabled = False
             selectedSSID = ""
             passkey = ""
             noneSelected = False
+
+            if 'wifiEnabled' in requestData:
+                enabled = requestData['wifiEnabled']
+            else:
+                validRequest = False
 
             if 'wifiSelectedSSID' in requestData:
                 selectedSSID = requestData['wifiSelectedSSID']
@@ -1100,13 +1162,11 @@ class WifiManager(object):
                 passkey = requestData['wifiPasskey']
             if 'wifiNoneSelected' in requestData:
                 noneSelected = requestData['wifiNoneSelected']
-            if not noneSelected:
+            if enabled and not noneSelected:
                 validRequest = (len(selectedSSID) > 0)
-                print("Valid Request: %s"%validRequest)
 
             if validRequest:
-            	print("Valid request = True")
-                if noneSelected:
+                if disabled or noneSelected:
                     currentScheme = Scheme.for_interface(interface)
                     if currentScheme:
                         try:
@@ -1124,10 +1184,8 @@ class WifiManager(object):
 
                     if selectedCell:
                         newScheme = Scheme.for_cell(interface, selectedCell, passkey)
-                        print("Got to connection variable.")
                         try:
                             connection = newScheme.activate()
-                            print("Connection (newScheme.activate()has succeeded.")
                             newScheme.save()
                             succeeded = True
                             ipAddress = connection.ip_address
