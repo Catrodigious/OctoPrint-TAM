@@ -493,6 +493,11 @@ function NetSettings(settingsViewModel)
 			self.settingsViewModel.wifi_passkey(netSettings.wifiPasskey);
 		}
 
+		var enabled = false;
+		if ("wifiEnabled" in netSettings) {
+			enabled = netSettings.wifiEnabled;
+		}
+
 		self.visibleSSIDs.length = 0;
 		if ("wifiVisibleSSIDs" in netSettings) {
 			self.visibleSSIDs = netSettings.wifiVisibleSSIDs;
@@ -526,7 +531,12 @@ function NetSettings(settingsViewModel)
 				}
 			}
 		} else {
-			var noneOption = { id:0, name:"(no wifi networks detected)" };
+			var noneOption = {};
+			if (enabled)
+				noneOption = { id:0, name:"(no wifi networks detected)" };
+			else
+				noneOption = { id:0, name:"(wifi turned off)" };
+
 			self.selectize.addOption(noneOption);
 		}
 
@@ -603,9 +613,8 @@ function NetSettings(settingsViewModel)
 	// TYPEA: make the save flags an instance variable, so we have access to them across multiple callbacks.
 	self.saveFlags = {
 		'needsWifiConnect': false,
-		'needsWifiDisconnect': false,
-		'needsWifiSwitch': false,
-		'needsWifiDelete': false
+		'needsWifiDisabled': false,
+		'needsWifiSwitch': false
 	}
 
 	self.save = function(response, wifiInfo)
@@ -624,9 +633,8 @@ function NetSettings(settingsViewModel)
 		console.log("NetSettings.save(): selectedSSID: " + wifiInfo.wifiSelectedSSID + ", wifiPasskey: " + wifiInfo.wifiPasskey);
 
 		self.saveFlags['needsWifiConnect'] = false;
-		self.saveFlags['needsWifiDisconnect'] = false;
+		self.saveFlags['needsWifiDisabled'] = false;
 		self.saveFlags['needsWifiSwitch'] = false;
-		self.saveFlags['needsWifiDelete'] = false;
 
 		if ('wifiNeedsChangeFlags' in needsChangeResult)
 		{
@@ -634,17 +642,15 @@ function NetSettings(settingsViewModel)
 	
 			if ('needsWifiConnect' in needsChangeResult.wifiNeedsChangeFlags)
 				self.saveFlags['needsWifiConnect'] = needsChangeResult.wifiNeedsChangeFlags.needsWifiConnect;
-			if ('needsWifiDisconnect' in needsChangeResult.wifiNeedsChangeFlags)
-				self.saveFlags['needsWifiDisconnect'] = needsChangeResult.wifiNeedsChangeFlags.needsWifiDisconnect;
+			if ('needsWifiDisabled' in needsChangeResult.wifiNeedsChangeFlags)
+				self.saveFlags['needsWifiDisabled'] = needsChangeResult.wifiNeedsChangeFlags.needsWifiDisabled;
 			if ('needsWifiSwitch' in needsChangeResult.wifiNeedsChangeFlags)
 				self.saveFlags['needsWifiSwitch'] = needsChangeResult.wifiNeedsChangeFlags.needsWifiSwitch;
-			if ('needsWifiDelete' in needsChangeResult.wifiNeedsChangeFlags)
-				self.saveFlags['needsWifiDelete'] = needsChangeResult.wifiNeedsChangeFlags.needsWifiDelete;
 		}
 		
-		console.log("needsWifiChange = " + self.saveFlags['needsWifiConnect']  + " " + self.saveFlags['needsWifiDisconnect'] + " " + self.saveFlags['needsWifiSwitch'] + " " + self.saveFlags['needsWifiDelete']);
+		console.log("needsWifiChange = " + self.saveFlags['needsWifiConnect']  + " " + self.saveFlags['needsWifiDisabled'] + " " + self.saveFlags['needsWifiSwitch']);
 
-		if (!self.saveFlags['needsWifiConnect'] && !self.saveFlags['needsWifiDisconnect'] && !self.saveFlags['needsWifiSwitch'] && !self.saveFlags['needsWifiDelete'])
+		if (!self.saveFlags['needsWifiConnect'] && !self.saveFlags['needsWifiDisabled'] && !self.saveFlags['needsWifiSwitch'])
 			return;
 
 		var alertHeader = "";
@@ -653,7 +659,7 @@ function NetSettings(settingsViewModel)
 		else if (self.saveFlags['needsWifiSwitch'])
 			alertHeader = "Switching printer to wifi network \u201c" + wifiInfo.wifiSelectedSSID + "\u201d.";
 		else
-			alertHeader = "Disconnecting printer from wifi.";
+			alertHeader = "Turning printer wifi off.";
 
 		$('#wifiAlertHeader').text(alertHeader);
 
