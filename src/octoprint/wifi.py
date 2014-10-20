@@ -108,6 +108,7 @@ class Cell(object):
         """
         Returns a list of all cells extracted from the output of iwlist.
         """
+        print('attempting to use iwlist scan')
         try:
             iwlist_scan = subprocess.check_output(['/sbin/iwlist', interface, 'scan'], stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
