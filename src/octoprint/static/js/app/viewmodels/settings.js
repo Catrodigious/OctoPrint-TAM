@@ -493,11 +493,6 @@ function NetSettings(settingsViewModel)
 			self.settingsViewModel.wifi_passkey(netSettings.wifiPasskey);
 		}
 
-		var enabled = false;
-		if ("wifiEnabled" in netSettings) {
-			enabled = netSettings.wifiEnabled;
-		}
-
 		self.visibleSSIDs.length = 0;
 		if ("wifiVisibleSSIDs" in netSettings) {
 			self.visibleSSIDs = netSettings.wifiVisibleSSIDs;
@@ -531,12 +526,7 @@ function NetSettings(settingsViewModel)
 				}
 			}
 		} else {
-			var noneOption = {};
-			if (enabled)
-				noneOption = { id:0, name:"(no wifi networks detected)" };
-			else
-				noneOption = { id:0, name:"(wifi turned off)" };
-
+			var noneOption = { id:0, name:"(no wifi networks detected)" };
 			self.selectize.addOption(noneOption);
 		}
 
@@ -613,8 +603,9 @@ function NetSettings(settingsViewModel)
 	// TYPEA: make the save flags an instance variable, so we have access to them across multiple callbacks.
 	self.saveFlags = {
 		'needsWifiConnect': false,
-		'needsWifiDisabled': false,
-		'needsWifiSwitch': false
+		'needsWifiDisconnect': false,
+		'needsWifiSwitch': false,
+		'needsWifiDelete': false
 	}
 
 	self.save = function(response, wifiInfo)
@@ -633,8 +624,9 @@ function NetSettings(settingsViewModel)
 		console.log("NetSettings.save(): selectedSSID: " + wifiInfo.wifiSelectedSSID + ", wifiPasskey: " + wifiInfo.wifiPasskey);
 
 		self.saveFlags['needsWifiConnect'] = false;
-		self.saveFlags['needsWifiDisabled'] = false;
+		self.saveFlags['needsWifiDisconnect'] = false;
 		self.saveFlags['needsWifiSwitch'] = false;
+		self.saveFlags['needsWifiDelete'] = false;
 
 		if ('wifiNeedsChangeFlags' in needsChangeResult)
 		{
@@ -642,15 +634,17 @@ function NetSettings(settingsViewModel)
 	
 			if ('needsWifiConnect' in needsChangeResult.wifiNeedsChangeFlags)
 				self.saveFlags['needsWifiConnect'] = needsChangeResult.wifiNeedsChangeFlags.needsWifiConnect;
-			if ('needsWifiDisabled' in needsChangeResult.wifiNeedsChangeFlags)
-				self.saveFlags['needsWifiDisabled'] = needsChangeResult.wifiNeedsChangeFlags.needsWifiDisabled;
+			if ('needsWifiDisconnect' in needsChangeResult.wifiNeedsChangeFlags)
+				self.saveFlags['needsWifiDisconnect'] = needsChangeResult.wifiNeedsChangeFlags.needsWifiDisconnect;
 			if ('needsWifiSwitch' in needsChangeResult.wifiNeedsChangeFlags)
 				self.saveFlags['needsWifiSwitch'] = needsChangeResult.wifiNeedsChangeFlags.needsWifiSwitch;
+			if ('needsWifiDelete' in needsChangeResult.wifiNeedsChangeFlags)
+				self.saveFlags['needsWifiDelete'] = needsChangeResult.wifiNeedsChangeFlags.needsWifiDelete;
 		}
 		
-		console.log("needsWifiChange = " + self.saveFlags['needsWifiConnect']  + " " + self.saveFlags['needsWifiDisabled'] + " " + self.saveFlags['needsWifiSwitch']);
+		console.log("needsWifiChange = " + self.saveFlags['needsWifiConnect']  + " " + self.saveFlags['needsWifiDisconnect'] + " " + self.saveFlags['needsWifiSwitch'] + " " + self.saveFlags['needsWifiDelete']);
 
-		if (!self.saveFlags['needsWifiConnect'] && !self.saveFlags['needsWifiDisabled'] && !self.saveFlags['needsWifiSwitch'])
+		if (!self.saveFlags['needsWifiConnect'] && !self.saveFlags['needsWifiDisconnect'] && !self.saveFlags['needsWifiSwitch'] && !self.saveFlags['needsWifiDelete'])
 			return;
 
 		var alertHeader = "";
@@ -659,7 +653,7 @@ function NetSettings(settingsViewModel)
 		else if (self.saveFlags['needsWifiSwitch'])
 			alertHeader = "Switching printer to wifi network \u201c" + wifiInfo.wifiSelectedSSID + "\u201d.";
 		else
-			alertHeader = "Turning printer wifi off.";
+			alertHeader = "Disconnecting printer from wifi.";
 
 		$('#wifiAlertHeader').text(alertHeader);
 
@@ -719,8 +713,12 @@ function NetSettings(settingsViewModel)
 		// TYPEA: do something to notify the user about whether the settings change worked.
 		if (self.networkConnectFlags['succeeded'])
 			$.pnotify({title: "Connection successful", text: "You are now connected to \"" + self.selectedSSID + "\"", type: "success"});
-		else		
-			$.pnotify({title: "Connection failed", text: "You are not connected to a network", type: "error"});
+		else if(self.networkConnectFlags['authenticateFailed'])
+			$.pnotify({title: "Connection failed", text: "The password you entered is incorrect. Please try again.", type: "error"});
+		else if(self.networkConnectFlags['ssidNotFound'])
+			$.pnotify({title: "Connection failed", text: "The network \"" + self.selectedSSID + "\"" + " was not found.", type: "error"});
+		else:
+			$.pnotify({title: "Connection failed", text: "A connection failure has occurred. Please try again.", type: "error"});
 	}
 
 	console.log("NetSettings() done.");
