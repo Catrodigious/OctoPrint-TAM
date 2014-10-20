@@ -585,6 +585,7 @@ function NetSettings(settingsViewModel)
 			'wifiPasskey': self.settingsViewModel.wifi_passkey(),
 			'wifiNoneSelected': noneSelected
 		};
+		self.selectedSSID = wifiInfo['wifiSelectedSSID']
 		
         var postRequest = $.ajax({
             url: API_BASEURL + "needsWifiChange",
@@ -656,7 +657,7 @@ function NetSettings(settingsViewModel)
 
 		$('#wifiAlertHeader').text(alertHeader);
 
-		var setWifiResponse = null;
+		self.setWifiResponse = null;
 		
 		if (!self.wifiAlertEventHandlersInstalled) {
 			$('#wifiAlertModal').on('shown', function() { 
@@ -664,6 +665,7 @@ function NetSettings(settingsViewModel)
 			
 				// TYPEA: post the new wifi settings to the server once our modal is show. This will prevent access to
 				// the rest of the Octoprint UI until the server responds.
+				self.setWifiResponse = null;
 				$.ajax({
 					url: API_BASEURL + "setWifiSettings",
 					type: "POST",
@@ -673,7 +675,7 @@ function NetSettings(settingsViewModel)
 					data: JSON.stringify(wifiInfo),
 					complete: function(response) {
 						console.log("setWifiSettings POST complete");
-						setWifiResponse = response.responseJSON;
+						self.setWifiResponse = response.responseJSON;
 						$('#wifiAlertModal').modal('hide');
 					}
 				});
@@ -690,7 +692,29 @@ function NetSettings(settingsViewModel)
 	}
 
 	self.displaySaveResult = function() {
+		var changeResult = self.setWifiResponse.wifiSettingsChangeResult
+		console.log("Change result: " + " " + changeResult)
+		self.networkConnectFlags = {
+		'succeeded' : false,
+		'authenticateFailed' : false,
+		'ssidNotFound' : false,
+		'osFailure' : false
+		}
+	
+		if ('succeeded' in changeResult.wifiSettingsChangeResultFlags)
+			self.networkConnectFlags['succeeded'] = changeResult.wifiSettingsChangeResultFlags.succeeded;
+		if ('authenticateFailed' in changeResult.wifiSettingsChangeResultFlags)
+			self.networkConnectFlags['authenticateFailed'] = changeResult.wifiSettingsChangeResultFlags.authenticateFailed;
+		if ('ssidNotFound' in changeResult.wifiSettingsChangeResultFlags)
+			self.networkConnectFlags['ssidNotFound'] = changeResult.wifiSettingsChangeResultFlags.ssidNotFound;
+		if ('osFailure' in changeResult.wifiSettingsChangeResultFlags)
+			self.networkConnectFlags['osFailure'] = changeResult.wifiSettingsChangeResultFlags.osFailure;		
+	
 		// TYPEA: do something to notify the user about whether the settings change worked.
+		if (self.networkConnectFlags['succeeded'])
+			$.pnotify({title: "Connection successful", text: "You are now connected to \"" + self.selectedSSID + "\"", type: "success"});
+		else		
+			$.pnotify({title: "Connection failed", text: "You are not connected to a network", type: "error"});
 	}
 
 	console.log("NetSettings() done.");
