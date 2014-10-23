@@ -717,7 +717,7 @@ function NetSettings(settingsViewModel)
 					data: JSON.stringify(self.wifiUIState),
 					complete: function(response) {
 						console.log("setWifiSettings POST complete");
-						setWifiResponse = response.responseJSON;
+						self.setWifiResponse = response.responseJSON;
 						$('#wifiAlertModal').modal('hide');
 					}
 				});
@@ -734,7 +734,7 @@ function NetSettings(settingsViewModel)
 	}
 
 	self.displaySaveResult = function() {
-		var changeResult = self.setWifiResponse.wifiSettingsChangeResult
+		var changeResult = self.setWifiResponse.wifiSettingsChangeResult;
 		console.log("Change result: " + " " + changeResult)
 		self.networkConnectFlags = {
 		'succeeded' : false,
