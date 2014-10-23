@@ -700,7 +700,7 @@ function NetSettings(settingsViewModel)
 
 		$('#wifiAlertHeader').text(alertHeader);
 
-		var self.setWifiResponse = null;
+		self.setWifiResponse = null;
 		
 		if (!self.wifiAlertEventHandlersInstalled) {
 			$('#wifiAlertModal').on('shown', function() { 

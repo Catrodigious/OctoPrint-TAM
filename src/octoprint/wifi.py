@@ -110,7 +110,7 @@ class Cell(object):
         """
 
         try:
-            iwlist_scan = subprocess.check_output(['/sbin/iwlist', interface, 'scan'], stderr=subprocess.STDOUT)
+            iwlist_scan = subprocess.check_output(['sudo /sbin/iwlist ' + interface + ' scan'], stderr=subprocess.STDOUT, shell = True)
         except subprocess.CalledProcessError as e:
             raise InterfaceError(e.output.strip())
         else:
