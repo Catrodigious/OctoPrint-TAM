@@ -27,6 +27,27 @@ def getNetworkSettings():
         "networkSettings": netSettings
     }) 
 
+
+@api.route("/needsWifiEnabled", methods=["POST"])
+@restricted_access
+@admin_permission.require(403)
+def needsWifiEnabled():
+    logger = logging.getLogger(__name__)
+    logger.info("needsWifiEnabled() called")
+
+    requestData = None
+    if "application/json" in request.headers["Content-Type"]:
+        requestData = request.json
+
+    wifiInterface = octoprint.server.wifiInterface
+    wifiManager = octoprint.server.wifiManager
+    wifiNeedsEnabledResult = wifiManager.needsEnabled(wifiInterface, requestData)
+
+    return jsonify({
+        'wifiNeedsEnabledResult': wifiNeedsEnabledResult
+    })
+
+
 @api.route("/needsWifiChange", methods=["POST"])
 @restricted_access
 @admin_permission.require(403)
@@ -46,6 +67,7 @@ def needsWifiChange():
         'wifiNeedsChangeResult': wifiNeedsChangeResult
     })
 
+
 @api.route("/setWifiSettings", methods=["POST"])
 @restricted_access
 @admin_permission.require(403)
@@ -63,4 +85,24 @@ def setWifiSettings():
 
     return jsonify({
         "wifiSettingsChangeResult": wifiSettingsChangeResult,
+    })
+
+
+@api.route("/enableWifi", methods=["POST"])
+@restricted_access
+@admin_permission.require(403)
+def enableWifi():
+    logger = logging.getLogger(__name__)
+    logger.info("enableWifi() called")
+
+    requestData = None
+    if "application/json" in request.headers["Content-Type"]:
+        requestData = request.json
+
+    wifiInterface = octoprint.server.wifiInterface
+    wifiManager = octoprint.server.wifiManager
+    wifiSetEnabledResult = wifiManager.setEnabled(wifiInterface, requestData)
+
+    return jsonify({
+        "wifiSetEnabledResult": wifiSetEnabledResult,
     })

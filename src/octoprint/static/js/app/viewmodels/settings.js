@@ -247,6 +247,7 @@ function SettingsViewModel(loginStateViewModel, usersViewModel) {
 
 	// TYPEA: FIXME: why do the net settings observables break if we move them to NetSettings()? I've tried qualifing
 	// their data binds with "netSettings." to no avail.
+
 	// TYPEA: these are bogus observables that are used initialize the Selectize widget's data bind. Selectize elements
 	// don't load properly if they don't have the data-bind set. But data-binding selectize elements doesn't actually
 	// work with ko2. So, we pass these two empty values to the selectize data-bind in the HTML, and then fill in real
@@ -266,12 +267,10 @@ function SettingsViewModel(loginStateViewModel, usersViewModel) {
 
 	if (!self.settingsDialogEventHandlersInstalled)
 	{
-		// TYPEA: install an event handler to to tell the network settings to save (see below) and also to reset the
-		// settingsSaved flag after the settings dialog is hidden.
+		// TYPEA: install an event handler to to tell the network settings that the settings dialog is about to be
+		// shown..
 		$('#settings_dialog').on('show', function() {
 			self.settingsSaved = false;
-			console.log("SettingsViewModel.netSettings: ");
-			console.log(self.netSettings);
 			self.netSettings.settingsDialogWillShow();
 		});
 
@@ -280,7 +279,6 @@ function SettingsViewModel(loginStateViewModel, usersViewModel) {
 		$('#settings_dialog').on('hidden', function() {
 			console.log("NetSettings: handling settings dialog hidden event.");
 			self.netSettings.settingsDialogDidHide(self.settingsSaved);
-			self.settingsSaved = false;
 		});
 	}
 
@@ -415,8 +413,17 @@ function NetSettings(settingsViewModel)
 	// which is called when the settings dialog is dismissed
 	self.uiUpdated = false;
 
+	// TYPEA: flag to indicate the UI has been fully initialized.
+	self.uiInitialized = false;
+
 	// TYPEA: guard flag to insure we don't install event handler callbacks on the alert dialog more than once. 
 	self.wifiAlertEventHandlersInstalled = false;
+	
+	// TYPEA: guard flag to insure we don't install event handler callbacks on the enable wifi checkbox more than once. 
+	self.wifiEnableWifiCBoxEventHandlersInstalled = false;
+	
+	// TYPEA: guard flag to insure we don't install event handler callbacks on the enable wifi alert more than once. 
+	self.wifiEnableAlertEventHandlersInstalled = false;
 
 	// TYPEA: interface to Selectize direct API. This gets set by the selectize custom ko binding in main.js. Weirdly,
 	// it seems Selectize's direct interface object can be accessed exactly once. The custom ko binding gets it first,
@@ -457,6 +464,14 @@ function NetSettings(settingsViewModel)
  		if (self.uiUpdated)
   			return;
  
+ 		if (!self.wifiEnableWifiCBoxEventHandlersInstalled) {
+			 $('#settings-wifienabled').change(function() {
+			 	self.wifiEnabledCBoxDidChange($(this).is(':checked'));
+			});
+			
+			self.wifiEnableWifiCBoxEventHandlersInstalled = true;
+		}
+ 
 		console.log("SettingsViewModel Selectize interface: ");
 		console.log(self.selectize);
 
@@ -477,6 +492,16 @@ function NetSettings(settingsViewModel)
  	}
 
 	self.disableUI = function() {
+		$("#settings-wifienabled").prop("disabled", true);
+		self.selectize.disable();
+		$("#settings-wifipasskey").prop("disabled", true);
+	}
+
+	self.refreshUI = function() {
+		self.uiUpdated = false;
+		self.uiInitialized = false;
+		
+		self.updateUI();
 	}
 
 	self.initUI = function(response) {
@@ -491,6 +516,18 @@ function NetSettings(settingsViewModel)
 		var netSettings = response.networkSettings;		
 		if ("wifiPasskey" in netSettings) {
 			self.settingsViewModel.wifi_passkey(netSettings.wifiPasskey);
+		}
+
+		var enabled = false;
+		if ("wifiEnabled" in netSettings) {
+			enabled = netSettings.wifiEnabled;
+		}
+
+		$("#settings-wifienabled").prop("checked", enabled);
+
+		if (!enabled) {
+			self.selectize.disable();
+			$("#settings-wifipasskey").prop("disabled", true);
 		}
 
 		self.visibleSSIDs.length = 0;
@@ -526,7 +563,12 @@ function NetSettings(settingsViewModel)
 				}
 			}
 		} else {
-			var noneOption = { id:0, name:"(no wifi networks detected)" };
+			var noneOption = {};
+			if (enabled)
+				noneOption = { id:0, name:"(no wifi networks detected)" };
+			else
+				noneOption = { id:0, name:"(wifi turned off)" };
+
 			self.selectize.addOption(noneOption);
 		}
 
@@ -538,16 +580,20 @@ function NetSettings(settingsViewModel)
 		}
 
 		self.selectize.setValue(selectedCellID);
-		self.selectize.refreshOptions(false);		
+		self.selectize.refreshOptions(false);
+		
+		self.uiInitialized = true;		
 	}
 
  	self.resetUI = function() {	
 		// TYPEA: set our updated flag to false so we'll know to refresh the next time we're shown.
 		self.uiUpdated = false;
+		self.uiInitialized = false;
  	}
  
  	self.reset = function()
  	{
+		self.settingsSaved = false;
  		if (self.visibleSSID)
  			self.visibleSSIDs.length = 0;
  	}
@@ -579,13 +625,14 @@ function NetSettings(settingsViewModel)
 		}
 
 		console.log("NetSettings.tryToSave(): selectedSSID: " + selectedSSID + ", wifiPasskey: " + self.settingsViewModel.wifi_passkey());
+		console.log("NetSettings.tryToSave(): wifi enabled: " + $("#settings-wifienabled").is(':checked'));
 
-		var wifiInfo = {
+		self.wifiUIState = {
+			'wifiEnabled': $("#settings-wifienabled").is(':checked'),
 			'wifiSelectedSSID': selectedSSID,
 			'wifiPasskey': self.settingsViewModel.wifi_passkey(),
 			'wifiNoneSelected': noneSelected
 		};
-		self.selectedSSID = wifiInfo['wifiSelectedSSID']
 		
         var postRequest = $.ajax({
             url: API_BASEURL + "needsWifiChange",
@@ -593,9 +640,9 @@ function NetSettings(settingsViewModel)
             dataType: "json",
             contentType: "application/json; charset=UTF-8",
  			timemout:10 * 1000,
-           	data: JSON.stringify(wifiInfo),
+           	data: JSON.stringify(self.wifiUIState),
             complete: function(response) {
-            	self.save(response.responseJSON, wifiInfo);
+            	self.save(response.responseJSON);
             }
         });
     }
@@ -603,12 +650,11 @@ function NetSettings(settingsViewModel)
 	// TYPEA: make the save flags an instance variable, so we have access to them across multiple callbacks.
 	self.saveFlags = {
 		'needsWifiConnect': false,
-		'needsWifiDisconnect': false,
-		'needsWifiSwitch': false,
-		'needsWifiDelete': false
+		'needsWifiDisabled': false,
+		'needsWifiSwitch': false
 	}
 
-	self.save = function(response, wifiInfo)
+	self.save = function(response)
 	{
 		if (!"networkSettings" in response) {
 			self.disableUI();
@@ -621,12 +667,11 @@ function NetSettings(settingsViewModel)
 
 		var needsChangeResult = response.wifiNeedsChangeResult;
 		
-		console.log("NetSettings.save(): selectedSSID: " + wifiInfo.wifiSelectedSSID + ", wifiPasskey: " + wifiInfo.wifiPasskey);
+		console.log("NetSettings.save(): selectedSSID: " + self.wifiUIState.wifiSelectedSSID + ", wifiPasskey: " + self.wifiUIState.wifiPasskey);
 
 		self.saveFlags['needsWifiConnect'] = false;
-		self.saveFlags['needsWifiDisconnect'] = false;
+		self.saveFlags['needsWifiDisabled'] = false;
 		self.saveFlags['needsWifiSwitch'] = false;
-		self.saveFlags['needsWifiDelete'] = false;
 
 		if ('wifiNeedsChangeFlags' in needsChangeResult)
 		{
@@ -634,48 +679,45 @@ function NetSettings(settingsViewModel)
 	
 			if ('needsWifiConnect' in needsChangeResult.wifiNeedsChangeFlags)
 				self.saveFlags['needsWifiConnect'] = needsChangeResult.wifiNeedsChangeFlags.needsWifiConnect;
-			if ('needsWifiDisconnect' in needsChangeResult.wifiNeedsChangeFlags)
-				self.saveFlags['needsWifiDisconnect'] = needsChangeResult.wifiNeedsChangeFlags.needsWifiDisconnect;
+			if ('needsWifiDisabled' in needsChangeResult.wifiNeedsChangeFlags)
+				self.saveFlags['needsWifiDisabled'] = needsChangeResult.wifiNeedsChangeFlags.needsWifiDisabled;
 			if ('needsWifiSwitch' in needsChangeResult.wifiNeedsChangeFlags)
 				self.saveFlags['needsWifiSwitch'] = needsChangeResult.wifiNeedsChangeFlags.needsWifiSwitch;
-			if ('needsWifiDelete' in needsChangeResult.wifiNeedsChangeFlags)
-				self.saveFlags['needsWifiDelete'] = needsChangeResult.wifiNeedsChangeFlags.needsWifiDelete;
 		}
 		
-		console.log("needsWifiChange = " + self.saveFlags['needsWifiConnect']  + " " + self.saveFlags['needsWifiDisconnect'] + " " + self.saveFlags['needsWifiSwitch'] + " " + self.saveFlags['needsWifiDelete']);
+		console.log("needsWifiChange = " + self.saveFlags['needsWifiConnect']  + " " + self.saveFlags['needsWifiDisabled'] + " " + self.saveFlags['needsWifiSwitch']);
 
-		if (!self.saveFlags['needsWifiConnect'] && !self.saveFlags['needsWifiDisconnect'] && !self.saveFlags['needsWifiSwitch'] && !self.saveFlags['needsWifiDelete'])
+		if (!self.saveFlags['needsWifiConnect'] && !self.saveFlags['needsWifiDisabled'] && !self.saveFlags['needsWifiSwitch'])
 			return;
 
 		var alertHeader = "";
 		if (self.saveFlags['needsWifiConnect'] )
-			alertHeader = "Connecting printer to wifi network \u201c" + wifiInfo.wifiSelectedSSID + "\u201d.";
+			alertHeader = "Connecting printer to wifi network \u201c" + self.wifiUIState.wifiSelectedSSID + "\u201d.";
 		else if (self.saveFlags['needsWifiSwitch'])
-			alertHeader = "Switching printer to wifi network \u201c" + wifiInfo.wifiSelectedSSID + "\u201d.";
+			alertHeader = "Switching printer to wifi network \u201c" + self.wifiUIState.wifiSelectedSSID + "\u201d.";
 		else
-			alertHeader = "Disconnecting printer from wifi.";
+			alertHeader = "Turning printer wifi off.";
 
 		$('#wifiAlertHeader').text(alertHeader);
 
-		self.setWifiResponse = null;
+		var setWifiResponse = null;
 		
 		if (!self.wifiAlertEventHandlersInstalled) {
 			$('#wifiAlertModal').on('shown', function() { 
-				console.log("posting wifi settings change: " + wifiInfo.wifiSelectedSSID);
+				console.log("posting wifi settings change: " + self.wifiUIState.wifiSelectedSSID);
 			
 				// TYPEA: post the new wifi settings to the server once our modal is show. This will prevent access to
 				// the rest of the Octoprint UI until the server responds.
-				self.setWifiResponse = null;
 				$.ajax({
 					url: API_BASEURL + "setWifiSettings",
 					type: "POST",
 					timemout:6 * 60 * 1000,
 					dataType: "json",
 					contentType: "application/json; charset=UTF-8",
-					data: JSON.stringify(wifiInfo),
+					data: JSON.stringify(self.wifiUIState),
 					complete: function(response) {
 						console.log("setWifiSettings POST complete");
-						self.setWifiResponse = response.responseJSON;
+						setWifiResponse = response.responseJSON;
 						$('#wifiAlertModal').modal('hide');
 					}
 				});
@@ -717,9 +759,89 @@ function NetSettings(settingsViewModel)
 			$.pnotify({title: "Connection failed", text: "The password you entered is incorrect. Please try again.", type: "error"});
 		else if(self.networkConnectFlags['ssidNotFound'])
 			$.pnotify({title: "Connection failed", text: "The network \"" + self.selectedSSID + "\"" + " was not found.", type: "error"});
-		else:
+		else
 			$.pnotify({title: "Connection failed", text: "A connection failure has occurred. Please try again.", type: "error"});
+	}
+
+	self.wifiEnabledUIState = {
+		'wifiEnabled': false
+	}
+
+	self.wifiEnabledCBoxDidChange = function(enabled) {
+		// TYPEA: don't try to toggle wifi on or off before the UI state is fully updated.
+		if (!self.uiInitialized)
+			return;
+			
+		self.wifiEnabledUIState['wifiEnabled'] = enabled;
+
+		console.log("wifi enabled checkbox clicked: " + enabled);
+
+		if (enabled)
+			self.selectize.enable();
+		else
+			self.selectize.disable();
+
+		$("#settings-wifipasskey").prop("disabled", !enabled);
+
+		$.ajax({
+			url: API_BASEURL + "needsWifiEnabled",
+			type: "POST",
+			dataType: "json",
+			contentType: "application/json; charset=UTF-8",
+			timemout:10 * 1000,
+			data: JSON.stringify(self.wifiEnabledUIState),
+			complete: function(response) {
+				console.log('needsWifiEnabled requested posted.');
+				self.enableWifi(response.responseJSON);
+			}
+		});
+	}
+
+
+	self.enableWifi = function(response) {
+		if (!self.wifiEnableAlertEventHandlersInstalled)
+		{
+			$('#wifiEnableModal').on('shown', function() { 
+				console.log("posting wifi enable change: " + self.wifiEnabledUIState.wifiEnabled);
+			
+				// TYPEA: tell the server to enable wifi once the modal is shown. This will prevent access to the rest
+				// of the Octoprint UI until the server responds.
+				$.ajax({
+					url: API_BASEURL + "enableWifi",
+					type: "POST",
+					timemout:6 * 60 * 1000,
+					dataType: "json",
+					contentType: "application/json; charset=UTF-8",
+					data: JSON.stringify(self.wifiEnabledUIState),
+					complete: function(response) {
+						console.log("enableWifi POST complete");
+						setWifiResponse = response.responseJSON;
+						
+						// TYPEA: hide the modal once we get a response back from the server.
+						$('#wifiEnableModal').modal('hide');
+					}
+				});
+			});
+
+			$('#wifiEnableModal').on('hidden', function() {
+				// TYPEA: refresh the net settings UI when the modal is hidden. The modal is hidden once the server has
+				// finished enabling wifi, so at that point we need to update the UI to show that wifi is enabled and
+				// list any visible wifi networks. 
+				self.refreshUI();
+			});
+
+			self.wifiEnableAlertEventHandlersInstalled = true;
+		}
+
+		console.log('enableWifi(): response: ');
+		console.log(response);
+
+		if (('wifiNeedsEnabled' in response.wifiNeedsEnabledResult) && response.wifiNeedsEnabledResult['wifiNeedsEnabled']) {
+			console.log('showing wifi enabled delay modal');
+			$('#wifiEnableModal').modal('show');
+		}
 	}
 
 	console.log("NetSettings() done.");
 }
+
