@@ -700,7 +700,7 @@ function NetSettings(settingsViewModel)
 
 		$('#wifiAlertHeader').text(alertHeader);
 
-		var setWifiResponse = null;
+		var self.setWifiResponse = null;
 		
 		if (!self.wifiAlertEventHandlersInstalled) {
 			$('#wifiAlertModal').on('shown', function() { 
@@ -815,7 +815,7 @@ function NetSettings(settingsViewModel)
 					data: JSON.stringify(self.wifiEnabledUIState),
 					complete: function(response) {
 						console.log("enableWifi POST complete");
-						setWifiResponse = response.responseJSON;
+						self.setWifiResponse = response.responseJSON;
 						
 						// TYPEA: hide the modal once we get a response back from the server.
 						$('#wifiEnableModal').modal('hide');
